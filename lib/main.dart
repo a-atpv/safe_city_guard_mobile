@@ -1,16 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'core/app_theme.dart';
+import 'core/app_colors.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
-import 'features/dashboard/dashboard_screen.dart';
+import 'features/auth/otp_screen.dart';
+import 'features/home/home_screen.dart';
+import 'features/incidents/incident_detail_screen.dart';
+import 'features/calls/call_report_screen.dart';
+import 'features/calls/call_history_screen.dart';
+import 'features/settings/settings_screen.dart';
+import 'features/support/support_screen.dart';
+import 'features/calls/active_call_screen.dart';
 
 void main() {
-  runApp(
-    const ProviderScope(
-      child: MyApp(),
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0xFF0D1530),
+      systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends ConsumerWidget {
@@ -18,25 +33,72 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authControllerProvider);
+
+    // Show splash while checking stored tokens
+    if (!authState.isInitialized) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.darkTheme,
+        home: const _SplashScreen(),
+      );
+    }
+
     final router = GoRouter(
-      initialLocation: '/login',
+      initialLocation: authState.isLoggedIn ? '/home' : '/login',
       routes: [
         GoRoute(
           path: '/login',
           builder: (context, state) => const LoginScreen(),
         ),
         GoRoute(
-          path: '/dashboard',
-          builder: (context, state) => const DashboardScreen(),
+          path: '/otp',
+          builder: (context, state) {
+            final email = state.extra as String? ?? '';
+            return OtpScreen(email: email);
+          },
+        ),
+        GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
+        GoRoute(
+          path: '/incident-detail',
+          builder: (context, state) => const IncidentDetailScreen(),
+        ),
+        GoRoute(
+          path: '/call-report',
+          builder: (context, state) {
+            final callId = state.extra as String? ?? '';
+            return CallReportScreen(callId: callId);
+          },
+        ),
+        GoRoute(
+          path: '/call-history',
+          builder: (context, state) => const CallHistoryScreen(),
+        ),
+        GoRoute(
+          path: '/settings',
+          builder: (context, state) => const SettingsScreen(),
+        ),
+        GoRoute(
+          path: '/support',
+          builder: (context, state) => const SupportScreen(),
+        ),
+        GoRoute(
+          path: '/active-call',
+          builder: (context, state) {
+            final callId = state.extra as int? ?? 0;
+            return ActiveCallScreen(callId: callId);
+          },
         ),
       ],
       redirect: (context, state) {
-        final authState = ref.read(authControllerProvider);
         final isLoggedIn = authState.isLoggedIn;
-        final isLoggingIn = state.uri.toString() == '/login';
+        final currentPath = state.uri.toString();
 
-        if (!isLoggedIn && !isLoggingIn) return '/login';
-        if (isLoggedIn && isLoggingIn) return '/dashboard';
+        final publicPaths = ['/login', '/otp'];
+        final isPublic = publicPaths.any((p) => currentPath.startsWith(p));
+
+        if (!isLoggedIn && !isPublic) return '/login';
+        if (isLoggedIn && currentPath == '/login') return '/home';
 
         return null;
       },
@@ -45,9 +107,22 @@ class MyApp extends ConsumerWidget {
     return MaterialApp.router(
       routerConfig: router,
       title: 'Safe City Guard',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.darkTheme,
+    );
+  }
+}
+
+/// Minimal splash shown while auth tokens are being checked
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: const Center(
+        child: CircularProgressIndicator(color: AppColors.accent),
       ),
     );
   }

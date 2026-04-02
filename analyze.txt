@@ -1,0 +1,139 @@
+Analyzing safe_city_guard_mobile...                             
+
+   info • Don't invoke 'print' in production code • lib/core/location/location_service.dart:44:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/core/location/location_service.dart:60:9 • avoid_print
+   info • Don't use 'BuildContext's across async gaps • lib/features/auth/login_screen.dart:59:30 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/auth/login_screen.dart:175:41 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/auth/otp_screen.dart:201:39 • use_build_context_synchronously
+   info • Don't invoke 'print' in production code • lib/features/auth/repository.dart:31:9 • avoid_print
+  error • The function 'StateNotifierProvider' isn't defined • lib/features/calls/call_controller.dart:33:5 • undefined_function
+  error • Classes can only extend other classes • lib/features/calls/call_controller.dart:38:30 • extends_non_class
+  error • Too many positional arguments: 0 expected, but 1 found • lib/features/calls/call_controller.dart:43:37 • extra_positional_arguments
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:72:5 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:72:13 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:78:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:78:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:84:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:84:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:96:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:96:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:106:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:106:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:121:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:121:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:129:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/calls/call_controller.dart:129:15 • undefined_identifier
+warning • The method doesn't override an inherited method • lib/features/calls/call_controller.dart:135:8 • override_on_non_overriding_member
+  error • The method 'dispose' isn't defined in a superclass of 'CallController' • lib/features/calls/call_controller.dart:137:11 • undefined_super_member
+  error • The function 'StateNotifierProvider' isn't defined • lib/features/home/shift_controller.dart:34:5 • undefined_function
+  error • Classes can only extend other classes • lib/features/home/shift_controller.dart:38:31 • extends_non_class
+  error • Too many positional arguments: 0 expected, but 1 found • lib/features/home/shift_controller.dart:43:38 • extra_positional_arguments
+  error • Undefined name 'state' • lib/features/home/shift_controller.dart:51:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/home/shift_controller.dart:51:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/home/shift_controller.dart:57:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/home/shift_controller.dart:57:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/home/shift_controller.dart:63:5 • undefined_identifier
+  error • Undefined name 'state' • lib/features/home/shift_controller.dart:63:13 • undefined_identifier
+  error • Undefined name 'state' • lib/features/home/shift_controller.dart:72:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/home/shift_controller.dart:72:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/home/shift_controller.dart:74:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/home/shift_controller.dart:74:15 • undefined_identifier
+warning • The method doesn't override an inherited method • lib/features/home/shift_controller.dart:92:8 • override_on_non_overriding_member
+  error • The method 'dispose' isn't defined in a superclass of 'ShiftController' • lib/features/home/shift_controller.dart:94:11 • undefined_super_member
+   info • Don't invoke 'print' in production code • lib/features/home/shift_repository.dart:43:7 • avoid_print
+  error • Undefined class 'MapController' • lib/features/map/map_screen.dart:14:9 • undefined_class
+  error • The method 'MapController' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:14:40 • undefined_method
+  error • Undefined class 'Widget' • lib/features/map/map_screen.dart:22:3 • undefined_class
+  error • Undefined class 'BuildContext' • lib/features/map/map_screen.dart:22:16 • undefined_class
+   info • The local variable '_isOnDuty' starts with an underscore • lib/features/map/map_screen.dart:24:11 • no_leading_underscores_for_local_identifiers
+   info • The local variable '_isLoadingShift' starts with an underscore • lib/features/map/map_screen.dart:25:11 • no_leading_underscores_for_local_identifiers
+  error • The method 'Stack' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:27:12 • undefined_method
+  error • The method 'FlutterMap' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:30:9 • undefined_method
+  error • The name 'MapOptions' isn't a class • lib/features/map/map_screen.dart:32:26 • creation_with_non_type
+  error • The method 'LatLng' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:33:28 • undefined_method
+  error • The method 'TileLayer' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:37:13 • undefined_method
+  error • The method 'CircleLayer' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:43:13 • undefined_method
+  error • The method 'CircleMarker' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:45:33 • undefined_method
+  error • The method 'MarkerLayer' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:60:13 • undefined_method
+  error • The method 'Marker' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:62:33 • undefined_method
+  error • The method 'GestureDetector' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:66:32 • undefined_method
+  error • The method 'Container' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:68:34 • undefined_method
+  error • The method 'BoxDecoration' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:69:41 • undefined_method
+  error • Undefined name 'BoxShape' • lib/features/map/map_screen.dart:73:38 • undefined_identifier
+  error • The method 'BoxShadow' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:75:33 • undefined_method
+  error • The name 'Icon' isn't a class • lib/features/map/map_screen.dart:85:42 • creation_with_non_type
+  error • Undefined name 'Icons' • lib/features/map/map_screen.dart:86:31 • undefined_identifier
+  error • Undefined name 'Colors' • lib/features/map/map_screen.dart:87:38 • undefined_identifier
+  error • The method 'RichAttributionWidget' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:95:13 • undefined_method
+  error • The method 'TextSourceAttribution' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:97:17 • undefined_method
+  error • The method 'Positioned' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:106:9 • undefined_method
+  error • Undefined name 'MediaQuery' • lib/features/map/map_screen.dart:107:16 • undefined_identifier
+  error • The method 'Row' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:110:18 • undefined_method
+  error • The method 'GestureDetector' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:113:15 • undefined_method
+  error • The method 'Container' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:121:24 • undefined_method
+  error • The name 'symmetric' isn't a class • lib/features/map/map_screen.dart:123:29 • creation_with_non_type
+  error • The method 'BoxDecoration' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:124:31 • undefined_method
+  error • Undefined name 'BorderRadius' • lib/features/map/map_screen.dart:126:35 • undefined_identifier
+  error • Undefined name 'Border' • lib/features/map/map_screen.dart:127:29 • undefined_identifier
+  error • The method 'Row' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:132:26 • undefined_method
+  error • Undefined name 'MainAxisSize' • lib/features/map/map_screen.dart:133:35 • undefined_identifier
+  error • The method 'Container' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:135:23 • undefined_method
+  error • The method 'BoxDecoration' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:138:37 • undefined_method
+  error • Undefined name 'BoxShape' • lib/features/map/map_screen.dart:141:34 • undefined_identifier
+  error • The name 'SizedBox' isn't a class • lib/features/map/map_screen.dart:144:29 • creation_with_non_type
+  error • The method 'Text' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:145:23 • undefined_method
+  error • The method 'TextStyle' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:149:32 • undefined_method
+  error • Undefined name 'FontWeight' • lib/features/map/map_screen.dart:153:39 • undefined_identifier
+  error • The name 'SizedBox' isn't a class • lib/features/map/map_screen.dart:156:29 • creation_with_non_type
+  error • The name 'SizedBox' isn't a class • lib/features/map/map_screen.dart:158:31 • creation_with_non_type
+  error • The method 'CircularProgressIndicator' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:161:34 • undefined_method
+  error • The method 'Icon' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:167:25 • undefined_method
+  error • Undefined name 'Icons' • lib/features/map/map_screen.dart:169:33 • undefined_identifier
+  error • Undefined name 'Icons' • lib/features/map/map_screen.dart:170:33 • undefined_identifier
+  error • The name 'Spacer' isn't a class • lib/features/map/map_screen.dart:180:21 • creation_with_non_type
+  error • The method 'Container' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:182:15 • undefined_method
+  error • The method 'BoxDecoration' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:183:29 • undefined_method
+  error • Undefined name 'BoxShape' • lib/features/map/map_screen.dart:185:26 • undefined_identifier
+  error • Undefined name 'Border' • lib/features/map/map_screen.dart:186:27 • undefined_identifier
+  error • The method 'IconButton' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:188:24 • undefined_method
+  error • The name 'LatLng' isn't a class • lib/features/map/map_screen.dart:191:31 • creation_with_non_type
+  error • The name 'Icon' isn't a class • lib/features/map/map_screen.dart:193:31 • creation_with_non_type
+  error • Undefined name 'Icons' • lib/features/map/map_screen.dart:193:36 • undefined_identifier
+  error • The method 'Positioned' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:202:9 • undefined_method
+  error • The method 'Column' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:205:18 • undefined_method
+  error • Undefined name 'Icons' • lib/features/map/map_screen.dart:208:19 • undefined_identifier
+  error • The name 'SizedBox' isn't a class • lib/features/map/map_screen.dart:211:21 • creation_with_non_type
+  error • Undefined name 'Icons' • lib/features/map/map_screen.dart:213:19 • undefined_identifier
+  error • Undefined class 'Widget' • lib/features/map/map_screen.dart:223:3 • undefined_class
+  error • Undefined class 'IconData' • lib/features/map/map_screen.dart:223:20 • undefined_class
+  error • Undefined class 'VoidCallback' • lib/features/map/map_screen.dart:223:35 • undefined_class
+  error • The method 'Container' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:224:12 • undefined_method
+  error • The method 'BoxDecoration' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:225:19 • undefined_method
+  error • Undefined name 'BoxShape' • lib/features/map/map_screen.dart:227:16 • undefined_identifier
+  error • Undefined name 'Border' • lib/features/map/map_screen.dart:228:17 • undefined_identifier
+  error • The method 'IconButton' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:230:14 • undefined_method
+  error • The method 'Icon' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:232:15 • undefined_method
+  error • The name 'BoxConstraints' isn't a class • lib/features/map/map_screen.dart:233:28 • creation_with_non_type
+  error • The method 'showModalBottomSheet' isn't defined for the type '_MapScreenState' • lib/features/map/map_screen.dart:239:5 • undefined_method
+  error • Undefined name 'Colors' • lib/features/map/map_screen.dart:241:24 • undefined_identifier
+  error • Undefined class 'LatLng' • lib/features/map/map_screen.dart:255:9 • undefined_class
+  error • The function 'StateNotifierProvider' isn't defined • lib/features/profile/profile_controller.dart:35:5 • undefined_function
+  error • Classes can only extend other classes • lib/features/profile/profile_controller.dart:39:33 • extends_non_class
+  error • Too many positional arguments: 0 expected, but 1 found • lib/features/profile/profile_controller.dart:42:47 • extra_positional_arguments
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:47:5 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:47:13 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:51:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:51:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:57:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:57:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:65:53 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:66:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:66:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:68:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:68:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:75:52 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:76:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:76:15 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:78:7 • undefined_identifier
+  error • Undefined name 'state' • lib/features/profile/profile_controller.dart:78:15 • undefined_identifier
+
