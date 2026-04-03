@@ -49,9 +49,9 @@ class AuthController extends Notifier<AuthState> {
   Future<bool> requestOtp(String email) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await _repository.requestOtp(email);
+      final success = await _repository.requestOtp(email);
       state = state.copyWith(isLoading: false);
-      return true;
+      return success;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
       return false;

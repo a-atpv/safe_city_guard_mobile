@@ -99,13 +99,6 @@ class ProfileScreen extends ConsumerWidget {
 
               const SizedBox(height: 24),
 
-              // Navigation items
-              _buildNavTile(
-                context,
-                Icons.history,
-                'История вызовов',
-                () => context.push('/call-history'),
-              ),
               _buildNavTile(
                 context,
                 Icons.settings_outlined,

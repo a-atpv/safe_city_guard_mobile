@@ -165,6 +165,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                               .notifier)
                                           .requestOtp(email);
                                       if (!mounted) return;
+                                      print("success: $success");
                                       if (success) {
                                         context.go('/otp', extra: email);
                                       }

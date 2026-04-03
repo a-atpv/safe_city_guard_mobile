@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -19,14 +20,23 @@ class MapScreen extends ConsumerStatefulWidget {
 
 class _MapScreenState extends ConsumerState<MapScreen> {
   LatLng _currentPosition = const LatLng(51.1282, 71.4307); // fallback: Astana
+  LatLng _selectedPosition = const LatLng(51.1282, 71.4307);
   String _currentAddress = 'Определение адреса...';
   bool _locationLoaded = false;
   final MapController _mapController = MapController();
+  Timer? _reverseGeocodeDebounce;
 
   @override
   void initState() {
     super.initState();
     _determinePosition();
+  }
+
+  @override
+  void dispose() {
+    _reverseGeocodeDebounce?.cancel();
+    _mapController.dispose();
+    super.dispose();
   }
 
   Future<void> _determinePosition() async {
@@ -38,7 +48,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (permission == LocationPermission.deniedForever ||
           permission == LocationPermission.denied) {
         // Use fallback coordinates
-        _reverseGeocode(_currentPosition);
+        _selectedPosition = _currentPosition;
+        _reverseGeocode(_selectedPosition);
         return;
       }
 
@@ -51,14 +62,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (mounted) {
         setState(() {
           _currentPosition = LatLng(position.latitude, position.longitude);
+          _selectedPosition = _currentPosition;
           _locationLoaded = true;
         });
         _mapController.move(_currentPosition, 16.5);
-        _reverseGeocode(_currentPosition);
+        _reverseGeocode(_selectedPosition);
       }
     } catch (e) {
       // Fallback to default
-      _reverseGeocode(_currentPosition);
+      _selectedPosition = _currentPosition;
+      _reverseGeocode(_selectedPosition);
     }
   }
 
@@ -95,6 +108,46 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     } catch (_) {
       // Keep the fallback text
     }
+  }
+
+  void _onMapPositionChanged(MapCamera camera, bool hasGesture) {
+    // When the user drags/zooms the map, treat the map CENTER as the selected location.
+    if (!hasGesture) return;
+    final center = camera.center;
+    setState(() => _selectedPosition = center);
+
+    _reverseGeocodeDebounce?.cancel();
+    _reverseGeocodeDebounce = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted) return;
+      _reverseGeocode(center);
+    });
+  }
+
+  void _zoomBy(double delta) {
+    final cam = _mapController.camera;
+    final nextZoom = (cam.zoom + delta).clamp(3.0, 19.0);
+    _mapController.move(cam.center, nextZoom);
+  }
+
+  Future<void> _openFullScreenMap() async {
+    final cam = _mapController.camera;
+    final result = await Navigator.of(context).push<_FullScreenMapResult>(
+      MaterialPageRoute(
+        builder: (_) => _FullScreenMapScreen(
+          initialCenter: _selectedPosition,
+          initialZoom: cam.zoom,
+          initialAddress: _currentAddress,
+        ),
+        fullscreenDialog: true,
+      ),
+    );
+
+    if (!mounted || result == null) return;
+    setState(() {
+      _selectedPosition = result.center;
+      _currentAddress = result.address;
+    });
+    _mapController.move(result.center, result.zoom);
   }
 
   @override
@@ -172,6 +225,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         options: MapOptions(
                           initialCenter: _currentPosition,
                           initialZoom: _locationLoaded ? 16.5 : 15.0,
+                          onPositionChanged: _onMapPositionChanged,
                         ),
                         children: [
                           TileLayer(
@@ -179,7 +233,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.safecity.guard',
                           ),
-                          // Current location marker
+                          // GPS location marker (user position)
                           MarkerLayer(
                             markers: [
                               Marker(
@@ -212,6 +266,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ),
                         ],
                       ),
+                      // Center pin (selected location). This stays in the middle while you pan the map.
+                      const Center(
+                        child: IgnorePointer(
+                          child: Icon(
+                            Icons.location_pin,
+                            size: 44,
+                            color: AppColors.danger,
+                          ),
+                        ),
+                      ),
+
                       // Address label
                       Positioned(
                         top: 100,
@@ -234,6 +299,35 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               ),
                             ),
                           ),
+                        ),
+                      ),
+
+                      // Zoom controls (right)
+                      Positioned(
+                        top: 14,
+                        right: 12,
+                        child: Column(
+                          children: [
+                            _MapControlButton(
+                              icon: Icons.add,
+                              onTap: () => _zoomBy(1),
+                            ),
+                            const SizedBox(height: 10),
+                            _MapControlButton(
+                              icon: Icons.remove,
+                              onTap: () => _zoomBy(-1),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Full screen (bottom-right)
+                      Positioned(
+                        right: 12,
+                        bottom: 12,
+                        child: _MapControlButton(
+                          icon: Icons.fullscreen,
+                          onTap: _openFullScreenMap,
                         ),
                       ),
                     ],
@@ -441,6 +535,233 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MapControlButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _MapControlButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.cardDark.withValues(alpha: 0.88),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Icon(icon, color: AppColors.textPrimary, size: 22),
+        ),
+      ),
+    );
+  }
+}
+
+class _FullScreenMapResult {
+  final LatLng center;
+  final double zoom;
+  final String address;
+
+  const _FullScreenMapResult({
+    required this.center,
+    required this.zoom,
+    required this.address,
+  });
+}
+
+class _FullScreenMapScreen extends StatefulWidget {
+  final LatLng initialCenter;
+  final double initialZoom;
+  final String initialAddress;
+
+  const _FullScreenMapScreen({
+    required this.initialCenter,
+    required this.initialZoom,
+    required this.initialAddress,
+  });
+
+  @override
+  State<_FullScreenMapScreen> createState() => _FullScreenMapScreenState();
+}
+
+class _FullScreenMapScreenState extends State<_FullScreenMapScreen> {
+  final MapController _controller = MapController();
+  Timer? _debounce;
+  LatLng _center = const LatLng(0, 0);
+  String _address = 'Определение адреса...';
+
+  @override
+  void initState() {
+    super.initState();
+    _center = widget.initialCenter;
+    _address = widget.initialAddress;
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onPositionChanged(MapCamera camera, bool hasGesture) {
+    if (!hasGesture) return;
+    setState(() => _center = camera.center);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 450), () async {
+      // Just keep the label responsive; no hard failure if reverse geocode fails.
+      final next = await _reverseGeocode(camera.center);
+      if (!mounted || next == null) return;
+      setState(() => _address = next);
+    });
+  }
+
+  void _zoomBy(double delta) {
+    final cam = _controller.camera;
+    final nextZoom = (cam.zoom + delta).clamp(3.0, 19.0);
+    _controller.move(cam.center, nextZoom);
+  }
+
+  Future<String?> _reverseGeocode(LatLng pos) async {
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?lat=${pos.latitude}&lon=${pos.longitude}&format=json&addressdetails=1&accept-language=ru',
+      );
+      final response = await http.get(url, headers: {
+        'User-Agent': 'SafeCityGuard/1.0',
+      });
+      if (response.statusCode != 200) return null;
+      final data = json.decode(response.body);
+      final address = data['address'];
+
+      final road = address?['road'] ?? address?['street'] ?? '';
+      final house = address?['house_number'] ?? '';
+      if (road is String && road.isNotEmpty) {
+        var label = road;
+        if (house is String && house.isNotEmpty) label += ' $house';
+        return label;
+      }
+      final display = data['display_name'];
+      if (display is String && display.isNotEmpty) {
+        return display.split(',').take(2).join(', ');
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _submit() {
+    final cam = _controller.camera;
+    Navigator.of(context).pop(
+      _FullScreenMapResult(center: _center, zoom: cam.zoom, address: _address),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            FlutterMap(
+              mapController: _controller,
+              options: MapOptions(
+                initialCenter: widget.initialCenter,
+                initialZoom: widget.initialZoom,
+                onPositionChanged: _onPositionChanged,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.safecity.guard',
+                ),
+              ],
+            ),
+            const Center(
+              child: IgnorePointer(
+                child: Icon(
+                  Icons.location_pin,
+                  size: 48,
+                  color: AppColors.danger,
+                ),
+              ),
+            ),
+            Positioned(
+              top: 12,
+              left: 12,
+              child: _MapControlButton(
+                icon: Icons.close,
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            ),
+            Positioned(
+              top: 12,
+              right: 12,
+              child: Column(
+                children: [
+                  _MapControlButton(icon: Icons.add, onTap: () => _zoomBy(1)),
+                  const SizedBox(height: 10),
+                  _MapControlButton(icon: Icons.remove, onTap: () => _zoomBy(-1)),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 68,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardDark.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _address,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: SizedBox(
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Выбрать',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

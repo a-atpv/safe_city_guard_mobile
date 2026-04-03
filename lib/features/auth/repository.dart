@@ -14,10 +14,32 @@ class AuthRepository {
     return fallback;
   }
 
-  Future<void> requestOtp(String email) async {
+  Future<bool> requestOtp(String email) async {
     try {
-      await _dio.post('/auth/request-otp', data: {'email': email});
+      final response = await _dio.post('/auth/request-otp', data: {'email': email});
+      final data = response.data;
+
+      // Backend response example:
+      // {"success":true,"message":"OTP sent successfully","data":{"email":"..."}}
+      if (data is Map && data['success'] != null) {
+        final success = data['success'];
+        if (success is bool) return success;
+        if (success is num) return success != 0;
+        if (success is String) return success.toLowerCase() == 'true';
+      }
+
+      // If the server doesn't include `success` but returned 2xx, treat as success.
+      return true;
     } on DioException catch (e) {
+      // In case the backend returns non-2xx but still includes `success`,
+      // try to interpret it instead of immediately failing.
+      final data = e.response?.data;
+      if (data is Map && data['success'] != null) {
+        final success = data['success'];
+        if (success is bool) return success;
+        if (success is num) return success != 0;
+        if (success is String) return success.toLowerCase() == 'true';
+      }
       throw Exception(_dioMessage(e, 'Failed to request OTP'));
     } catch (e) {
       throw Exception('Failed to request OTP');

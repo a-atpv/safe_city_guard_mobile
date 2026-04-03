@@ -1,12 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/app_colors.dart';
+import '../calls/call_repository.dart';
 
-class IncidentsListScreen extends StatelessWidget {
+final incidentsRepoProvider = Provider((ref) => CallRepository());
+
+/// Calls list shown on the "Incidents" tab.
+/// Uses the same loading/error/refresh pattern as `CallHistoryScreen`,
+/// but keeps the incidents card design.
+final incidentsProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  final repo = ref.read(incidentsRepoProvider);
+  return repo.getCallHistory(limit: 50, offset: 0);
+});
+
+class IncidentsListScreen extends ConsumerWidget {
   const IncidentsListScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final asyncIncidents = ref.watch(incidentsProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -26,26 +41,82 @@ class IncidentsListScreen extends StatelessWidget {
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => context.push('/call-history'),
-                    icon: const Icon(Icons.history,
-                        color: AppColors.textSecondary),
-                  ),
                 ],
               ),
             ),
             const Divider(height: 1),
             // Incidents list
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _demoIncidents.length,
-                itemBuilder: (context, index) {
-                  final item = _demoIncidents[index];
-                  return _IncidentCard(
-                    incident: item,
-                    onTap: () => context.push('/incident-detail'),
+              child: asyncIncidents.when(
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: AppColors.accent),
+                ),
+                error: (e, _) => Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline,
+                          size: 48,
+                          color:
+                              AppColors.textHint.withValues(alpha: 0.5)),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Не удалось загрузить вызовы',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: () => ref.invalidate(incidentsProvider),
+                        child: const Text('Повторить',
+                            style: TextStyle(color: AppColors.accent)),
+                      ),
+                    ],
+                  ),
+                ),
+                data: (data) {
+                  final calls = (data['calls'] as List?) ?? [];
+
+                  if (calls.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.shield_outlined,
+                              size: 64,
+                              color:
+                                  AppColors.textHint.withValues(alpha: 0.5)),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Нет вызовов',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return RefreshIndicator(
+                    onRefresh: () async {
+                      ref.invalidate(incidentsProvider);
+                    },
+                    color: AppColors.accent,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: calls.length,
+                      itemBuilder: (context, index) {
+                        final call = calls[index] as Map<String, dynamic>;
+                        return _IncidentCard(
+                          call: call,
+                          onTap: () => context.push('/incident-detail'),
+                        );
+                      },
+                    ),
                   );
                 },
               ),
@@ -58,13 +129,56 @@ class IncidentsListScreen extends StatelessWidget {
 }
 
 class _IncidentCard extends StatelessWidget {
-  final _DemoIncident incident;
+  final Map<String, dynamic> call;
   final VoidCallback onTap;
 
-  const _IncidentCard({required this.incident, required this.onTap});
+  const _IncidentCard({required this.call, required this.onTap});
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'completed':
+        return AppColors.accent;
+      case 'cancelled_by_user':
+      case 'cancelled_by_system':
+        return AppColors.warning;
+      case 'accepted':
+      case 'en_route':
+      case 'arrived':
+        return AppColors.info;
+      default:
+        return AppColors.danger;
+    }
+  }
+
+  String _timeFromCreatedAt(String createdAt) {
+    if (createdAt.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(createdAt);
+      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return '';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final callerName = (call['caller']?['name'] as String?)?.trim();
+    final name = (callerName == null || callerName.isEmpty)
+        ? 'Неизвестный'
+        : callerName;
+
+    final category = (call['category'] as String?)?.trim();
+    final type = (category == null || category.isEmpty) ? 'Вызов' : category;
+
+    final createdAt = (call['created_at'] as String?) ?? '';
+    final time = _timeFromCreatedAt(createdAt);
+
+    final status = (call['status'] as String?) ?? 'unknown';
+    final statusColor = _statusColor(status);
+
+    final address =
+        (call['location']?['address'] as String?)?.trim() ?? '—';
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
       child: Material(
@@ -85,14 +199,14 @@ class _IncidentCard extends StatelessWidget {
                     shape: BoxShape.circle,
                     gradient: LinearGradient(
                       colors: [
-                        incident.statusColor.withValues(alpha: 0.7),
-                        incident.statusColor.withValues(alpha: 0.3),
+                        statusColor.withValues(alpha: 0.7),
+                        statusColor.withValues(alpha: 0.3),
                       ],
                     ),
                   ),
                   child: Center(
                     child: Text(
-                      incident.name[0],
+                      name[0].toUpperCase(),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
@@ -110,7 +224,7 @@ class _IncidentCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              incident.name,
+                              name,
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
@@ -118,21 +232,22 @@ class _IncidentCard extends StatelessWidget {
                               ),
                             ),
                           ),
-                          Text(
-                            incident.time,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
+                          if (time.isNotEmpty)
+                            Text(
+                              time,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        incident.type,
+                        type,
                         style: TextStyle(
                           fontSize: 13,
-                          color: incident.statusColor,
+                          color: statusColor,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -143,7 +258,7 @@ class _IncidentCard extends StatelessWidget {
                               size: 14, color: AppColors.textSecondary),
                           const SizedBox(width: 4),
                           Text(
-                            incident.address,
+                            address,
                             style: const TextStyle(
                               fontSize: 12,
                               color: AppColors.textSecondary,
@@ -165,57 +280,3 @@ class _IncidentCard extends StatelessWidget {
     );
   }
 }
-
-class _DemoIncident {
-  final String name;
-  final String type;
-  final String address;
-  final String time;
-  final Color statusColor;
-
-  const _DemoIncident({
-    required this.name,
-    required this.type,
-    required this.address,
-    required this.time,
-    required this.statusColor,
-  });
-}
-
-const _demoIncidents = [
-  _DemoIncident(
-    name: 'Алексей Петров',
-    type: 'Кража',
-    address: 'ул. Абая 42',
-    time: '14:35',
-    statusColor: AppColors.danger,
-  ),
-  _DemoIncident(
-    name: 'Мария Иванова',
-    type: 'ДТП',
-    address: 'пр. Назарбаева 12',
-    time: '13:20',
-    statusColor: AppColors.warning,
-  ),
-  _DemoIncident(
-    name: 'Сергей Ким',
-    type: 'Нарушение порядка',
-    address: 'ул. Жандосова 8',
-    time: '12:45',
-    statusColor: AppColors.danger,
-  ),
-  _DemoIncident(
-    name: 'Елена Смирнова',
-    type: 'Пожар',
-    address: 'ул. Тимирязева 23',
-    time: '11:15',
-    statusColor: AppColors.danger,
-  ),
-  _DemoIncident(
-    name: 'Дмитрий Волков',
-    type: 'Подозрительная активность',
-    address: 'ул. Гагарина 5',
-    time: '10:30',
-    statusColor: AppColors.warning,
-  ),
-];

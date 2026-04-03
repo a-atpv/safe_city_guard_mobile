@@ -33,10 +33,15 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authControllerProvider);
+    final isInitialized = ref.watch(
+      authControllerProvider.select((s) => s.isInitialized),
+    );
+    final isLoggedIn = ref.watch(
+      authControllerProvider.select((s) => s.isLoggedIn),
+    );
 
     // Show splash while checking stored tokens
-    if (!authState.isInitialized) {
+    if (!isInitialized) {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
@@ -45,7 +50,7 @@ class MyApp extends ConsumerWidget {
     }
 
     final router = GoRouter(
-      initialLocation: authState.isLoggedIn ? '/home' : '/login',
+      initialLocation: isLoggedIn ? '/home' : '/login',
       routes: [
         GoRoute(
           path: '/login',
@@ -54,7 +59,8 @@ class MyApp extends ConsumerWidget {
         GoRoute(
           path: '/otp',
           builder: (context, state) {
-            final email = state.extra as String? ?? '';
+            final email =
+                state.extra is String ? state.extra as String : '';
             return OtpScreen(email: email);
           },
         ),
@@ -91,7 +97,6 @@ class MyApp extends ConsumerWidget {
         ),
       ],
       redirect: (context, state) {
-        final isLoggedIn = authState.isLoggedIn;
         final currentPath = state.uri.toString();
 
         final publicPaths = ['/login', '/otp'];

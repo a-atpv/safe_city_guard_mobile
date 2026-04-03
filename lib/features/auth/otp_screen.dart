@@ -166,11 +166,13 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                         )
                       else
                         TextButton(
-                          onPressed: () {
-                            ref
+                          onPressed: () async {
+                            final success = await ref
                                 .read(authControllerProvider.notifier)
                                 .requestOtp(widget.email);
-                            _startTimer();
+                            if (success) {
+                              _startTimer();
+                            }
                           },
                           child: const Text(
                             'Отправить код повторно',
