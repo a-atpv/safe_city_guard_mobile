@@ -4,13 +4,20 @@ import '../../core/api_client.dart';
 class CallRepository {
   final Dio _dio = dio;
 
-  Future<Map<String, dynamic>?> getActiveCall() async {
+  Future<List<Map<String, dynamic>>> getAvailableCalls() async {
     try {
-      final response = await _dio.get('/call/active');
-      return response.data;
+      final response = await _dio.get('/calls/available');
+      final data = response.data;
+      if (data is List) {
+        return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+      if (data is Map<String, dynamic>) {
+        return [data];
+      }
+      return const [];
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
-        return null;
+        return const [];
       }
       throw Exception(e.response?.data['detail'] ?? 'Failed to fetch active call');
     }

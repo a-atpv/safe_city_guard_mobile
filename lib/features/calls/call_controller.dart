@@ -5,22 +5,26 @@ import '../home/shift_controller.dart';
 
 class CallState {
   final Map<String, dynamic>? activeCall;
+  final List<Map<String, dynamic>> availableCalls;
   final bool isLoading;
   final String? error;
 
   const CallState({
     this.activeCall,
+    this.availableCalls = const [],
     this.isLoading = true,
     this.error,
   });
 
   CallState copyWith({
     Map<String, dynamic>? Function()? activeCall,
+    List<Map<String, dynamic>>? availableCalls,
     bool? isLoading,
     String? error,
   }) {
     return CallState(
       activeCall: activeCall != null ? activeCall() : this.activeCall,
+      availableCalls: availableCalls ?? this.availableCalls,
       isLoading: isLoading ?? this.isLoading,
       error: error,
     );
@@ -72,19 +76,26 @@ class CallController extends Notifier<CallState> {
   void _stopPolling() {
     _pollingTimer?.cancel();
     _pollingTimer = null;
-    state = state.copyWith(activeCall: () => null, isLoading: false);
+    state = state.copyWith(
+      activeCall: () => null,
+      availableCalls: const [],
+      isLoading: false,
+    );
   }
 
   Future<void> _fetchActiveCall() async {
     try {
-      final callInfo = await _repository.getActiveCall();
+      final calls = await _repository.getAvailableCalls();
       state = state.copyWith(
-        activeCall: () => callInfo,
+        availableCalls: calls,
+        activeCall: () => calls.isNotEmpty ? calls.first : null,
         isLoading: false,
         error: null,
       );
     } catch (e) {
       state = state.copyWith(
+        availableCalls: const [],
+        activeCall: () => null,
         isLoading: false,
         error: 'Failed to fetch active call: $e',
       );

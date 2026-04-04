@@ -347,9 +347,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
               const SizedBox(height: 12),
 
-              // Call cards — only from API
-              if (callState.activeCall != null)
-                _buildCallCard(callState.activeCall!)
+              // Call cards — from available calls list (refreshes via polling)
+              if (callState.availableCalls.isNotEmpty)
+                ...callState.availableCalls.map(_buildCallCard)
               else
                 _buildEmptyCallsState(),
 
@@ -405,7 +405,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   // ─── Call Card (from API) ───
   Widget _buildCallCard(Map<String, dynamic> call) {
     final name = call['caller']?['name'] ?? 'Неизвестный';
-    final address = call['address'] ?? 'Нет адреса';
+    final address = (call['address'] as String?) ??
+        (call['location']?['address'] as String?) ??
+        (call['latitude'] != null && call['longitude'] != null
+            ? '${call['latitude']}, ${call['longitude']}'
+            : 'Нет адреса');
     final callId = call['id'].toString();
 
     return Container(
