@@ -15,6 +15,8 @@ import 'features/settings/settings_screen.dart';
 import 'features/support/support_screen.dart';
 import 'features/calls/active_call_screen.dart';
 
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
@@ -50,6 +52,7 @@ class MyApp extends ConsumerWidget {
     }
 
     final router = GoRouter(
+      navigatorKey: rootNavigatorKey,
       initialLocation: isLoggedIn ? '/home' : '/login',
       routes: [
         GoRoute(

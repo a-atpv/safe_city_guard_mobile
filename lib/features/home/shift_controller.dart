@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/location/location_service.dart';
+import '../../core/websocket/websocket_service.dart';
 import 'shift_repository.dart';
 
 class ShiftState {
@@ -55,7 +56,7 @@ class ShiftController extends Notifier<ShiftState> {
       state = state.copyWith(isOnline: isOnline, isLoading: false);
 
       if (isOnline) {
-        _startLocationTracking();
+        _onGoingOnline();
       }
     } catch (e) {
       state = state.copyWith(
@@ -68,15 +69,25 @@ class ShiftController extends Notifier<ShiftState> {
     try {
       if (value) {
         await _repository.startShift();
-        _startLocationTracking();
+        _onGoingOnline();
       } else {
         await _repository.endShift();
-        _stopLocationTracking();
+        _onGoingOffline();
       }
       state = state.copyWith(isOnline: value, isLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  void _onGoingOnline() {
+    _startLocationTracking();
+    webSocketServiceProvider.connect();
+  }
+
+  void _onGoingOffline() {
+    _stopLocationTracking();
+    webSocketServiceProvider.disconnect();
   }
 
   void _startLocationTracking() {
