@@ -53,6 +53,15 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/app_icon.png
+  # Match dark navy from the logo background for Android adaptive icon edges
+  adaptive_icon_background: "#0D1530"
+  adaptive_icon_foreground: assets/app_icon.png
 
 flutter:
   uses-material-design: true
