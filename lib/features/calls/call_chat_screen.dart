@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_colors.dart';
 import 'call_repository.dart';
-import 'call_controller.dart';
 
 class CallChatScreen extends ConsumerStatefulWidget {
   final String callId;
@@ -43,11 +42,11 @@ class _CallChatScreenState extends ConsumerState<CallChatScreen> {
       
       // Handle different possible backend response structures
       List<dynamic> messageList = [];
-      if (data.containsKey('messages')) {
-        messageList = data['messages'] as List;
-      } else if (data.containsKey('results')) {
-        messageList = data['results'] as List;
-      } else if (data is Map && data.values.any((v) => v is List)) {
+      if (data['messages'] is List) {
+        messageList = data['messages'];
+      } else if (data['results'] is List) {
+        messageList = data['results'];
+      } else if (data.values.any((v) => v is List)) {
          messageList = data.values.firstWhere((v) => v is List);
       }
 

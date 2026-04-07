@@ -341,7 +341,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
     final address = route?.userAddress ?? fallback?['address'] ?? 'Адрес не определен';
     final status = route?.callStatus ?? fallback?['status'] ?? 'pending';
     final guardName = route?.guardName ?? 'Охранник';
-    final callerName = fallback?['caller']?['name'] ?? 'Пользователь';
+    // final callerName = fallback?['caller']?['name'] ?? 'Пользователь';
 
     final elapsed =
         '${_elapsed.inMinutes.toString().padLeft(2, '0')}:'
