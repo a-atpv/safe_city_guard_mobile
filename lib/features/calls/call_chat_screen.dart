@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_colors.dart';
-import 'call_repository.dart';
+import 'call_controller.dart';
 
 class CallChatScreen extends ConsumerStatefulWidget {
   final String callId;
