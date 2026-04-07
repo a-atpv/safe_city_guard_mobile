@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'call_repository.dart';
 import '../home/shift_controller.dart';
+import '../../core/websocket/websocket_service.dart';
 
 class CallState {
   final Map<String, dynamic>? activeCall;
@@ -81,6 +83,10 @@ class CallController extends Notifier<CallState> {
       availableCalls: const [],
       isLoading: false,
     );
+  }
+
+  Future<void> refresh() async {
+    await _fetchActiveCall();
   }
 
   Future<void> _fetchActiveCall() async {

@@ -20,10 +20,38 @@ class CallOfferListener {
   void _startListening() {
     debugPrint('CallOfferListener: Starting');
     _subscription = webSocketServiceProvider.messageStream.listen((message) {
-      if (message['type'] == 'call_offer') {
+      final type = message['type'];
+      if (type == 'call_offer') {
         _handleCallOffer(message);
+      } else if (type == 'call_cancelled') {
+        _handleCallCancelled(message);
+      } else if (type == 'call_status_update') {
+        _handleStatusUpdate(message);
       }
     });
+  }
+
+  void _handleStatusUpdate(Map<String, dynamic> message) {
+    final status = message['status'];
+    // If the call is already accepted by someone else or moved beyond pending, 
+    // we should close the offer sheet if it's open.
+    if (status != 'pending' && status != 'offered') {
+      debugPrint('CallOfferListener: Call status updated to $status, closing offer if open');
+      _closeOfferSheet();
+    }
+  }
+
+  void _handleCallCancelled(Map<String, dynamic> message) {
+    debugPrint('CallOfferListener: Call cancelled by user: $message');
+    _closeOfferSheet();
+  }
+
+  void _closeOfferSheet() {
+    SOSAlertManager.stopAlert();
+    final context = rootNavigatorKey.currentContext;
+    if (context != null && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   void _handleCallOffer(Map<String, dynamic> offer) {

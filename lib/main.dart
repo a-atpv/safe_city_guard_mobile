@@ -18,6 +18,7 @@ import 'features/calls/call_history_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/support/support_screen.dart';
 import 'features/calls/active_call_screen.dart';
+import 'features/calls/call_chat_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -114,6 +115,13 @@ class MyApp extends ConsumerWidget {
           builder: (context, state) {
             final callId = state.extra as int? ?? 0;
             return ActiveCallScreen(callId: callId);
+          },
+        ),
+        GoRoute(
+          path: '/call-chat',
+          builder: (context, state) {
+            final callId = state.extra as String? ?? '';
+            return CallChatScreen(callId: callId);
           },
         ),
       ],

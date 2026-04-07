@@ -2,24 +2,28 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'route_model.dart';
 import 'route_service.dart';
 import 'call_repository.dart';
+import 'call_controller.dart';
 
-class ActiveCallScreen extends StatefulWidget {
+class ActiveCallScreen extends ConsumerStatefulWidget {
   final int callId;
   const ActiveCallScreen({super.key, required this.callId});
 
   @override
-  State<ActiveCallScreen> createState() => _ActiveCallScreenState();
+  ConsumerState<ActiveCallScreen> createState() => _ActiveCallScreenState();
 }
 
-class _ActiveCallScreenState extends State<ActiveCallScreen> {
+class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
   CallRouteData? _callRoute;
   bool _isLoading = true;
   Timer? _refreshTimer;
   Timer? _elapsedTimer;
   Duration _elapsed = Duration.zero;
+  bool _hasAutoRedirected = false;
   final MapController _mapController = MapController();
   final RouteService _routeService = RouteService();
   final CallRepository _callRepo = CallRepository();
@@ -56,11 +60,23 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
           _callRoute = data;
           _isLoading = false;
         });
+
+        // If route is not available, auto-redirect once to chat
+        if (data.route == null && !_hasAutoRedirected) {
+          _hasAutoRedirected = true;
+          context.push('/call-chat', extra: widget.callId.toString());
+        }
       }
     } catch (e) {
       debugPrint('Route loading failed: $e');
       if (mounted) {
         setState(() => _isLoading = false);
+
+        // Even on error, redirect to chat as a fallback communication channel
+        if (!_hasAutoRedirected) {
+          _hasAutoRedirected = true;
+          context.push('/call-chat', extra: widget.callId.toString());
+        }
       }
     }
   }
@@ -95,60 +111,121 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final callState = ref.watch(callControllerProvider);
+    final activeCall = callState.activeCall;
+
+    // Show indicator only on very first load if we have no fallback data
+    if (_isLoading && _callRoute == null && activeCall == null) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF1A1A2E),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Stack(
-              children: [
-                // ===== MAP =====
-                _buildMap(),
+      body: Stack(
+        children: [
+          // ===== MAP =====
+          _buildMap(activeCall),
 
-                // ===== BACK BUTTON =====
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 8,
-                  left: 16,
-                  child: IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ),
-
-                // ===== ETA BADGE on map =====
-                if (_callRoute?.route != null)
-                  Positioned(
-                    top: MediaQuery.of(context).padding.top + 50,
-                    right: 60,
-                    child: _buildETABadge(_callRoute!.route!.etaMinutes),
-                  ),
-
-                // ===== BOTTOM SHEET =====
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: _buildBottomSheet(),
-                ),
-              ],
+          // ===== BACK BUTTON =====
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 16,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
             ),
+          ),
+
+          // ===== ETA BADGE on map =====
+          if (_callRoute?.route != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 50,
+              right: 60,
+              child: _buildETABadge(_callRoute!.route!.etaMinutes),
+            ),
+
+          // ===== ERROR BANNER if route failed =====
+          if (_callRoute == null && activeCall != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 60,
+              left: 20,
+              right: 20,
+              child: _buildRouteErrorBanner(),
+            ),
+
+          // ===== BOTTOM SHEET =====
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildBottomSheet(activeCall),
+          ),
+          
+          if (_isLoading)
+            const Positioned(
+              top: 40,
+              right: 20,
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRouteErrorBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Маршрут недоступен. Используйте чат для связи.',
+              style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   // ─────────────────────────────────────────────
   // MAP with polyline + markers
   // ─────────────────────────────────────────────
-  Widget _buildMap() {
+  Widget _buildMap(Map<String, dynamic>? activeCall) {
     final route = _callRoute;
-    if (route == null) return const SizedBox();
+    LatLng? userPos;
+    LatLng? guardPos;
+    List<LatLng> polylinePoints = [];
 
-    // Convert decoded coordinates to LatLng list → this IS the polyline
-    final polylinePoints =
-        route.route?.coordinates.map((c) => LatLng(c[0], c[1])).toList() ?? [];
+    if (route != null) {
+      userPos = LatLng(route.userLatitude, route.userLongitude);
+      guardPos = route.guardLatitude != null && route.guardLongitude != null
+          ? LatLng(route.guardLatitude!, route.guardLongitude!)
+          : null;
+      polylinePoints = route.route?.coordinates.map((c) => LatLng(c[0], c[1])).toList() ?? [];
+    } else if (activeCall != null) {
+      final loc = activeCall['location'];
+      if (loc != null) {
+        userPos = LatLng(loc['latitude'], loc['longitude']);
+      }
+    }
 
-    final userPos = LatLng(route.userLatitude, route.userLongitude);
-    final guardPos = route.guardLatitude != null && route.guardLongitude != null
-        ? LatLng(route.guardLatitude!, route.guardLongitude!)
-        : null;
+    if (userPos == null) {
+      return Container(color: const Color(0xFF1A1A2E));
+    }
 
     // Calculate map bounds to fit both points
     final allPoints = [...polylinePoints];
@@ -160,7 +237,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
       options: MapOptions(
         initialCenter: userPos,
         initialZoom: 14,
-        // Dark map style
+        interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
         backgroundColor: const Color(0xFF1A1A2E),
         onMapReady: () {
           if (allPoints.length >= 2) {
@@ -168,7 +245,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
             _mapController.fitCamera(
               CameraFit.bounds(
                 bounds: bounds,
-                padding: const EdgeInsets.all(60),
+                padding: const EdgeInsets.all(80),
               ),
             );
           }
@@ -259,9 +336,12 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
   // ─────────────────────────────────────────────
   // BOTTOM SHEET (status + guard info + address + comment)
   // ─────────────────────────────────────────────
-  Widget _buildBottomSheet() {
+  Widget _buildBottomSheet(Map<String, dynamic>? fallback) {
     final route = _callRoute;
-    if (route == null) return const SizedBox();
+    final address = route?.userAddress ?? fallback?['address'] ?? 'Адрес не определен';
+    final status = route?.callStatus ?? fallback?['status'] ?? 'pending';
+    final guardName = route?.guardName ?? 'Охранник';
+    final callerName = fallback?['caller']?['name'] ?? 'Пользователь';
 
     final elapsed =
         '${_elapsed.inMinutes.toString().padLeft(2, '0')}:'
@@ -299,9 +379,9 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              const Text(
-                'В работе',
-                style: TextStyle(
+              Text(
+                status == 'accepted' ? 'Принято' : status == 'en-route' ? 'В пути' : status == 'arrived' ? 'На месте' : 'Активно',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -320,133 +400,106 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
           ),
           const SizedBox(height: 16),
 
-          // ── Guard info row ──
+          // ── Guard info row (showing Guard name) ──
           Row(
             children: [
               // Avatar
               CircleAvatar(
-                radius: 24,
-                backgroundImage: route.guardAvatarUrl != null
-                    ? NetworkImage(route.guardAvatarUrl!)
-                    : null,
-                child: route.guardAvatarUrl == null
-                    ? Text(
-                        route.guardName?.isNotEmpty == true
-                            ? route.guardName!.substring(0, 1)
-                            : 'G',
-                      )
-                    : null,
+                radius: 20,
+                backgroundColor: Colors.blueGrey,
+                child: Text(guardName[0].toUpperCase(), style: const TextStyle(color: Colors.white)),
               ),
               const SizedBox(width: 12),
-
-              // Name + rating
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      route.guardName ?? '',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        const Icon(Icons.star, color: Colors.amber, size: 16),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${route.guardRating?.toStringAsFixed(1) ?? "5.0"} '
-                          '(${route.guardTotalReviews ?? 0} отзывов)',
-                          style: const TextStyle(
-                            color: Colors.white60,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                child: Text(
+                  guardName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-
-              // Call button
-              if (route.guardPhone != null)
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.green.withAlpha(38), // 0.15 opacity
-                    shape: BoxShape.circle,
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.phone, color: Colors.green),
-                    onPressed: () {
-                      // launchUrl(Uri.parse('tel:${route.guardPhone}'));
-                    },
-                  ),
+              
+              // CHAT BUTTON
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4A90FF).withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
                 ),
+                child: IconButton(
+                  icon: const Icon(Icons.chat_bubble_outline, color: Color(0xFF4A90FF)),
+                  onPressed: () => context.push('/call-chat', extra: widget.callId.toString()),
+                ),
+              ),
+              const SizedBox(width: 8),
+              
+              // Call button (placeholder)
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.phone, color: Colors.green),
+                  onPressed: () {},
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
 
           // ── Address ──
-          if (route.userAddress != null) ...[
-            Row(
-              children: [
-                const Icon(
-                  Icons.location_city,
-                  color: Colors.white54,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Column(
+          Row(
+            children: [
+              const Icon(Icons.location_on, color: Colors.white54, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Адрес:',
-                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                      'Место происшествия:',
+                      style: TextStyle(color: Colors.white38, fontSize: 11),
                     ),
                     Text(
-                      route.userAddress!,
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      address,
+                      style: const TextStyle(color: Colors.white, fontSize: 13),
                     ),
                   ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-          ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
 
           // ── Action Buttons ──
-          if (route.callStatus == 'accepted')
+          if (status == 'accepted')
             _buildActionButton(
-              'В пути (En Route)',
-              Colors.blue,
+              'Выехать (En Route)',
+              const Color(0xFF4A90FF),
               false,
               () => _handleStatusAction('en_route'),
             ),
-          if (route.callStatus == 'en_route')
+          if (status == 'en-route' || status == 'en_route')
             _buildActionButton(
               'На месте (Arrived)',
               Colors.orange,
               false,
               () => _handleStatusAction('arrived'),
             ),
-          if (route.callStatus == 'arrived')
+          if (status == 'arrived')
             _buildActionButton(
-              'Завершить (Complete)',
+              'Завершить вызов',
               Colors.green,
               false,
               () => _handleStatusAction('complete'),
             ),
 
-          const SizedBox(height: 12),
-          // ── Cancel/Close button ──
+          const SizedBox(height: 8),
           _buildActionButton(
-            'Закрыть',
-            Colors.redAccent,
+            'На карту',
+            Colors.white24,
             true,
             () => Navigator.pop(context),
           ),
@@ -493,7 +546,7 @@ class _ActiveCallScreenState extends State<ActiveCallScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
+      ),
     );
   }
 }

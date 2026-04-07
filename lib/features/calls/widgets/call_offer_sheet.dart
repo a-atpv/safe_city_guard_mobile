@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'dart:ui';
 import '../call_repository.dart';
 
@@ -254,8 +255,11 @@ class CallOfferSheet extends ConsumerWidget {
       final repo = CallRepository();
       await repo.acceptCall(callId.toString());
       if (context.mounted) {
-        Navigator.pop(context);
-        // Navigate to active call screen or let it handle via state
+        Navigator.pop(context); // Close the bottom sheet
+        
+        // Navigate to active call screen
+        final int id = callId is int ? callId : int.tryParse(callId.toString()) ?? 0;
+        context.push('/active-call', extra: id);
       }
     } catch (e) {
       if (context.mounted) {
