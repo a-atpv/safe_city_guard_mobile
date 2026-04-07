@@ -55,13 +55,7 @@ class AuthRepository {
         data['refresh_token'],
         role: data['role'],
       );
-      
-      // Attempt to register device with a dummy token for now
-      try {
-        await registerDevice('dummy_device_token');
-      } catch (e) {
-        print('Device registration failed, but proceeding: $e');
-      }
+      // Device registration is now handled by the controller
     } on DioException catch (e) {
       throw Exception(_dioMessage(e, 'Failed to verify OTP'));
     } catch (e) {
@@ -89,12 +83,12 @@ class AuthRepository {
   }
 
   Future<void> logout([String? deviceToken]) async {
-    try {
-      // Unregister push notifications token before clearing tokens locally
-      final tokenToUnregister = deviceToken ?? 'dummy_device_token';
-      await unregisterDevice(tokenToUnregister);
-    } catch (e) {
-      print('Device unregistration failed, but proceeding: $e');
+    if (deviceToken != null) {
+      try {
+        await unregisterDevice(deviceToken);
+      } catch (e) {
+        print('Device unregistration failed, but proceeding: $e');
+      }
     }
     await _tokenStorage.clearTokens();
   }

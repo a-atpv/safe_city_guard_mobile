@@ -1,14 +1,79 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
+import 'api_constants.dart';
 import 'token_storage.dart';
 
 class ApiClient {
   static final Dio _dio = Dio(
     BaseOptions(
-      baseUrl: 'https://safe-city-back-7c8ed50edd7d.herokuapp.com/api/v1/guard',
+      baseUrl: ApiConstants.guardBaseUrl,
       connectTimeout: const Duration(seconds: 10),
       receiveTimeout: const Duration(seconds: 10),
     ),
   );
+
+  static final StreamController<void> _logoutController = StreamController<void>.broadcast();
+  static Stream<void> get logoutStream => _logoutController.stream;
+
+  static bool _isRefreshing = false;
+  static Completer<String?>? _refreshCompleter;
+
+  static Future<String?> refreshToken() async {
+    if (_isRefreshing) {
+      return _refreshCompleter?.future;
+    }
+
+    _isRefreshing = true;
+    _refreshCompleter = Completer<String?>();
+
+    try {
+      final refreshToken = await TokenStorage().getRefreshToken();
+      if (refreshToken == null) {
+        throw Exception('No refresh token available');
+      }
+
+      // Use a separate Dio instance for refreshing to avoid interceptor recursion
+      final refreshDio = Dio(BaseOptions(
+        baseUrl: ApiConstants.guardBaseUrl,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+      ));
+
+      final response = await refreshDio.post(
+        ApiConstants.refresh,
+        data: {'refresh_token': refreshToken},
+      );
+
+      final newAccessToken = response.data['access_token'];
+      final newRefreshToken = response.data['refresh_token'];
+
+      // Save new tokens
+      await TokenStorage().saveTokens(newAccessToken, newRefreshToken);
+      
+      // Complete the completer so other waiting requests can proceed
+      _refreshCompleter!.complete(newAccessToken);
+      return newAccessToken;
+    } catch (refreshError) {
+      _refreshCompleter!.complete(null);
+      
+      // Refresh failed - clear tokens and trigger logout
+      await TokenStorage().clearTokens();
+      _logoutController.add(null);
+      
+      return null;
+    } finally {
+      _isRefreshing = false;
+      _refreshCompleter = null;
+    }
+  }
+
+  /// Proactively ensures a fresh token is available.
+  /// For now, it returns the current token if available.
+  /// Potential future improvement: decode JWT and refresh if close to expiry.
+  static Future<String?> ensureFreshToken() async {
+    final token = await TokenStorage().getAccessToken();
+    return token;
+  }
 
   static bool _interceptorsAdded = false;
 
@@ -35,38 +100,19 @@ class ApiClient {
             return handler.next(options);
           },
           onError: (DioException e, handler) async {
+            // Check if the error is a 401 Unauthorized
             if (e.response?.statusCode == 401) {
-              final refreshToken = await TokenStorage().getRefreshToken();
-              if (refreshToken != null) {
+              final newToken = await refreshToken();
+              if (newToken != null) {
+                // Retry the original request with the new token
+                final opts = e.requestOptions;
+                opts.headers['Authorization'] = 'Bearer $newToken';
                 try {
-                  // Use a fresh Dio to avoid interceptor loop
-                  final refreshDio = Dio(BaseOptions(
-                    baseUrl: 'https://safe-city-back-7c8ed50edd7d.herokuapp.com/api/v1/guard',
-                    connectTimeout: const Duration(seconds: 10),
-                    receiveTimeout: const Duration(seconds: 10),
-                  ));
-
-                  final refreshResponse = await refreshDio.post(
-                    '/auth/refresh',
-                    data: {'refresh_token': refreshToken},
-                  );
-
-                  final newAccessToken = refreshResponse.data['access_token'];
-                  final newRefreshToken = refreshResponse.data['refresh_token'];
-
-                  await TokenStorage().saveTokens(newAccessToken, newRefreshToken);
-
-                  // Retry the original request with the new token
-                  final opts = e.requestOptions;
-                  opts.headers['Authorization'] = 'Bearer $newAccessToken';
                   final retryResponse = await _dio.fetch(opts);
                   return handler.resolve(retryResponse);
-                } catch (refreshError) {
-                  await TokenStorage().clearTokens();
+                } catch (retryError) {
                   return handler.next(e);
                 }
-              } else {
-                await TokenStorage().clearTokens();
               }
             }
             return handler.next(e);
@@ -78,13 +124,13 @@ class ApiClient {
   }
 }
 
-/// Global Dio instance for guard endpoints (/api/v1/guard/*)
+/// Global Dio instance for authenticated guard endpoints
 final dio = ApiClient.instance;
 
-/// Separate Dio for non-guard endpoints (/api/v1/*)
+/// Separate Dio for public endpoints (login, OTP)
 final dioPublic = Dio(
   BaseOptions(
-    baseUrl: 'https://safe-city-back-7c8ed50edd7d.herokuapp.com/api/v1',
+    baseUrl: ApiConstants.baseUrl,
     connectTimeout: const Duration(seconds: 10),
     receiveTimeout: const Duration(seconds: 10),
   ),

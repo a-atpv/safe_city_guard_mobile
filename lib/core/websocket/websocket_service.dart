@@ -3,16 +3,18 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import '../api_client.dart';
+import '../api_constants.dart';
 import '../token_storage.dart';
 
 class WebSocketService {
-  static const String _baseUrl = 'wss://safe-city-back-7c8ed50edd7d.herokuapp.com/api/v1/ws/guard';
+  static const String _baseUrl = ApiConstants.wsGuardUrl;
   
   WebSocketChannel? _channel;
   bool _isConnecting = false;
   bool _shouldReconnect = false;
-  int _reconnectDelaySeconds = 1;
-  final int _maxReconnectDelaySeconds = 30;
+  int _reconnectDelaySeconds = 2;
+  final int _maxReconnectDelaySeconds = 32;
 
   final _messageController = StreamController<Map<String, dynamic>>.broadcast();
   Stream<Map<String, dynamic>> get messageStream => _messageController.stream;
@@ -28,7 +30,7 @@ class WebSocketService {
     _isConnecting = true;
     _shouldReconnect = true;
 
-    final token = await TokenStorage().getAccessToken();
+    final token = await ApiClient.ensureFreshToken();
     if (token == null) {
       debugPrint('WebSocketService: No token found, cannot connect.');
       _isConnecting = false;
@@ -36,7 +38,7 @@ class WebSocketService {
     }
 
     final url = '$_baseUrl?token=$token';
-    debugPrint('WebSocketService: Connecting to $url');
+    debugPrint('WebSocketService: Connecting to WebSocket...');
 
     try {
       _channel = IOWebSocketChannel.connect(Uri.parse(url));
@@ -44,7 +46,7 @@ class WebSocketService {
       _isConnected = true;
       _isConnecting = false;
       _connectionController.add(true);
-      _reconnectDelaySeconds = 1; // Reset delay on success
+      _reconnectDelaySeconds = 2; // Reset on success
       debugPrint('WebSocketService: Connected');
 
       _channel!.stream.listen(
@@ -79,7 +81,14 @@ class WebSocketService {
   void _handleMessage(dynamic message) {
     try {
       final Map<String, dynamic> data = jsonDecode(message);
-      debugPrint('WebSocketService: Received message: $data');
+      
+      // Filter out heartbeat messages
+      if (data['type'] == 'ping') {
+        debugPrint('WebSocketService: Received heartbeat (ping)');
+        return;
+      }
+
+      debugPrint('WebSocketService: Received business message: ${data['type']}');
       _messageController.add(data);
     } catch (e) {
       debugPrint('WebSocketService: Error decoding message: $e');
@@ -88,13 +97,15 @@ class WebSocketService {
 
   void _handleDisconnect() {
     _isConnected = false;
+    _isConnecting = false;
     _connectionController.add(false);
     
     if (_shouldReconnect) {
       debugPrint('WebSocketService: Reconnecting in $_reconnectDelaySeconds seconds...');
-      Future.delayed(Duration(seconds: _reconnectDelaySeconds), () {
+      
+      Future.delayed(Duration(seconds: _reconnectDelaySeconds), () async {
         if (_shouldReconnect) {
-          _reconnectDelaySeconds = (_reconnectDelaySeconds * 2).clamp(1, _maxReconnectDelaySeconds);
+          _reconnectDelaySeconds = (_reconnectDelaySeconds * 2).clamp(2, _maxReconnectDelaySeconds);
           connect();
         }
       });

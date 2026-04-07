@@ -1,9 +1,13 @@
+import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_core/firebase_core.dart';
+
 import 'core/app_theme.dart';
 import 'core/app_colors.dart';
+import 'core/notifications/push_notification_service.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/otp_screen.dart';
@@ -17,8 +21,22 @@ import 'features/calls/active_call_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    // Initialize Firebase
+    await Firebase.initializeApp();
+    
+    // Initialize Push Notifications
+    final pushService = PushNotificationService();
+    await pushService.initialize();
+    
+    log('Firebase and Push Notifications initialized');
+  } catch (e) {
+    log('Firebase initialization failed: $e');
+  }
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -121,7 +139,6 @@ class MyApp extends ConsumerWidget {
   }
 }
 
-/// Minimal splash shown while auth tokens are being checked
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();
 
