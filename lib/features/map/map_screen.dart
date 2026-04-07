@@ -492,7 +492,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             child: ElevatedButton(
               onPressed: () {
                 ref.read(callControllerProvider.notifier).acceptCall(callId);
-                context.push('/incident-detail');
+                final int id = int.tryParse(callId) ?? 0;
+                context.push('/active-call', extra: id);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.accent,

@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/location/location_service.dart';
 import '../../core/websocket/websocket_service.dart';
+import '../calls/call_controller.dart';
 import 'shift_repository.dart';
 
 class ShiftState {
@@ -29,8 +31,6 @@ class ShiftState {
 
 final shiftRepositoryProvider = Provider((ref) => ShiftRepository());
 
-// We must also define a singleton LocationService or let Riverpod manage it.
-// Here we wire them together.
 final shiftControllerProvider =
     NotifierProvider<ShiftController, ShiftState>(ShiftController.new);
 
@@ -43,8 +43,16 @@ class ShiftController extends Notifier<ShiftState> {
     _repository = ref.read(shiftRepositoryProvider);
     Future.microtask(() => checkCurrentShift());
 
+    final wsSubscription =
+        webSocketServiceProvider.connectionStream.listen((isConnected) {
+      if (isConnected) {
+        ref.read(callControllerProvider.notifier).refresh();
+      }
+    });
+
     ref.onDispose(() {
       _stopLocationTracking();
+      wsSubscription.cancel();
     });
 
     return const ShiftState();

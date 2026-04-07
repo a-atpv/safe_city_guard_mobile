@@ -316,10 +316,8 @@ class IncidentDetailScreen extends ConsumerWidget {
                             child: SizedBox(
                               height: 50,
                               child: OutlinedButton(
-                                onPressed: () {
-                                  // Chat / message placeholder
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Чат недоступен')));
-                                },
+                                onPressed: () =>
+                                    context.push('/call-chat', extra: callId),
                                 style: OutlinedButton.styleFrom(
                                   side: const BorderSide(
                                       color: AppColors.accent, width: 1.5),

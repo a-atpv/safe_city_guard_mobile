@@ -99,12 +99,7 @@ class ProfileScreen extends ConsumerWidget {
 
               const SizedBox(height: 24),
 
-              _buildNavTile(
-                context,
-                Icons.settings_outlined,
-                'Настройки',
-                () => context.push('/settings'),
-              ),
+
               _buildNavTile(
                 context,
                 Icons.headset_mic_outlined,
