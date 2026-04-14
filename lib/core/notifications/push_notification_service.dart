@@ -38,8 +38,12 @@ class PushNotificationService {
     );
 
     if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      log('User declined or has not accepted notification permissions');
+      log('Push Notifications: Permission DENIED');
       return;
+    } else if (settings.authorizationStatus == AuthorizationStatus.provisional) {
+      log('Push Notifications: Permission PROVISIONAL (quiet)');
+    } else {
+      log('Push Notifications: Permission GRANTED');
     }
 
     // 2. Local Notifications Setup (for showing foreground alerts)
@@ -60,6 +64,13 @@ class PushNotificationService {
     await _localNotifications.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTapped,
+    );
+
+    // 2.5 Configure foreground notification options for iOS
+    await _fcm.setForegroundNotificationPresentationOptions(
+      alert: true, 
+      badge: true,
+      sound: true,
     );
 
     // 3. Create Android Notification Channel
@@ -85,7 +96,8 @@ class PushNotificationService {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       log('Received foreground message: ${message.notification?.title}');
       
-      // If the message has a notification data, show it locally
+      // On iOS, setForegroundNotificationPresentationOptions handles the display
+      // On Android, we show a local notification
       if (message.notification != null && Platform.isAndroid) {
         _showLocalNotification(message);
       }
@@ -106,15 +118,45 @@ class PushNotificationService {
 
     _isInitialized = true;
     log('PushNotificationService initialized');
+    
+    // Proactively get token to ensure we have it
+    await getFcmToken();
   }
 
   Future<String?> getFcmToken() async {
     try {
+      // On iOS, we must wait for the APNS token to be available
+      if (Platform.isIOS) {
+        log('Push Notifications: Checking APNS status...');
+        String? apnsToken = await _fcm.getAPNSToken();
+        if (apnsToken == null) {
+          log('Push Notifications: APNS token not yet available. Retrying...');
+          // Give it a few attempts
+          for (int i = 0; i < 5; i++) {
+            await Future.delayed(Duration(seconds: 2 * (i + 1)));
+            apnsToken = await _fcm.getAPNSToken();
+            if (apnsToken != null) break;
+            log('Push Notifications: APNS retry ${i + 1} failed...');
+          }
+        }
+        
+        if (apnsToken != null) {
+          log('Push Notifications: APNS Token Success: $apnsToken');
+        } else {
+          log('Push Notifications: APNS Token ERROR: Still null after retries. FCM will likely fail.');
+        }
+      }
+
+      log('Push Notifications: Requesting FCM Token...');
       String? token = await _fcm.getToken();
-      log('FCM Token: $token');
+      if (token != null) {
+        log('Push Notifications: FCM Token Success: $token');
+      } else {
+        log('Push Notifications: FCM Token ERROR: Received null');
+      }
       return token;
     } catch (e) {
-      log('Error getting FCM token: $e');
+      log('Push Notifications: FATAL ERROR during token retrieval: $e');
       return null;
     }
   }
