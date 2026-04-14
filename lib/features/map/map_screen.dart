@@ -337,20 +337,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               const SizedBox(height: 24),
 
               // ─── Calls Section ───
-              const Text(
-                'Вызовы:',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+              if (callState.activeCall != null || callState.availableCalls.isNotEmpty) ...[
+                const Text(
+                  'Вызовы:',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-
-              // Call cards — from available calls list (refreshes via polling)
-              if (callState.availableCalls.isNotEmpty)
-                ...callState.availableCalls.map(_buildCallCard)
-              else
+                const SizedBox(height: 12),
+                
+                // Show active call first if it exists
+                if (callState.activeCall != null)
+                  _buildCallCard(callState.activeCall!, isActive: true),
+                
+                // Show remaining available calls
+                ...callState.availableCalls.map((c) => _buildCallCard(c, isActive: false)),
+              ] else
                 _buildEmptyCallsState(),
 
               const SizedBox(height: 20),
@@ -403,7 +407,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   // ─── Call Card (from API) ───
-  Widget _buildCallCard(Map<String, dynamic> call) {
+  Widget _buildCallCard(Map<String, dynamic> call, {bool isActive = false}) {
     final name = call['caller']?['name'] ?? 'Неизвестный';
     final address = (call['address'] as String?) ??
         (call['location']?['address'] as String?) ??
@@ -418,10 +422,45 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       decoration: BoxDecoration(
         color: AppColors.cardDark,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.divider, width: 0.5),
+        border: Border.all(
+          color: isActive ? AppColors.accent.withValues(alpha: 0.5) : AppColors.divider,
+          width: isActive ? 1.5 : 0.5,
+        ),
+        boxShadow: isActive ? [
+          BoxShadow(
+            color: AppColors.accent.withValues(alpha: 0.1),
+            blurRadius: 10,
+            spreadRadius: 2,
+          )
+        ] : null,
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (isActive)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'ТЕКУЩИЙ ВЫЗОВ',
+                      style: TextStyle(
+                        color: AppColors.accent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Row(
             children: [
               // Avatar
@@ -432,8 +471,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
                     colors: [
-                      AppColors.accent.withValues(alpha: 0.6),
-                      AppColors.info.withValues(alpha: 0.6),
+                      isActive ? AppColors.accent : AppColors.accent.withValues(alpha: 0.6),
+                      isActive ? AppColors.info : AppColors.info.withValues(alpha: 0.6),
                     ],
                   ),
                 ),
@@ -491,21 +530,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             height: 48,
             child: ElevatedButton(
               onPressed: () {
-                ref.read(callControllerProvider.notifier).acceptCall(callId);
+                if (!isActive) {
+                  ref.read(callControllerProvider.notifier).acceptCall(callId);
+                }
                 final int id = int.tryParse(callId) ?? 0;
                 context.push('/active-call', extra: id);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accent,
+                backgroundColor: isActive ? AppColors.info : AppColors.accent,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
                 elevation: 0,
               ),
-              child: const Text(
-                'Принять',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              child: Text(
+                isActive ? 'Перейти' : 'Принять',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
             ),
           ),

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import '../../core/api_client.dart';
 
@@ -12,7 +13,7 @@ class ShiftRepository {
       if (e.response?.statusCode == 404) {
         return false;
       }
-      throw Exception(e.response?.data['detail'] ?? 'Failed to get shift status');
+      throw Exception(ApiClient.extractError(e, 'Failed to get shift status'));
     }
   }
 
@@ -20,7 +21,7 @@ class ShiftRepository {
     try {
       await _dio.post('/shift/start');
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to start shift');
+      throw Exception(ApiClient.extractError(e, 'Failed to start shift'));
     }
   }
 
@@ -28,7 +29,7 @@ class ShiftRepository {
     try {
       await _dio.post('/shift/end');
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to end shift');
+      throw Exception(ApiClient.extractError(e, 'Failed to end shift'));
     }
   }
 
@@ -40,7 +41,7 @@ class ShiftRepository {
       });
     } catch (e) {
       // Ignore location update errors to not spam the UI
-      print('Failed to update location to backend: $e');
+      debugPrint('Failed to update location to backend: $e');
     }
   }
 }

@@ -57,11 +57,18 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> _initAuth() async {
-    final isLoggedIn = await _repository.isLoggedIn();
-    if (isLoggedIn) {
-      _registerDevice();
+    try {
+      final isLoggedIn = await _repository.isLoggedIn();
+      if (isLoggedIn) {
+        _registerDevice();
+      }
+      state = state.copyWith(isLoggedIn: isLoggedIn, isInitialized: true);
+    } catch (e) {
+      log('Auth initialization failed: $e');
+      // Even on error, we must set isInitialized to true to allow the app to 
+      // escape the splash screen and show the login page.
+      state = state.copyWith(isLoggedIn: false, isInitialized: true);
     }
-    state = state.copyWith(isLoggedIn: isLoggedIn, isInitialized: true);
   }
 
   Future<void> _registerDevice() async {

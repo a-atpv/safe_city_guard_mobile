@@ -9,6 +9,8 @@ import '../api_constants.dart';
 class WebSocketService {
   static const String _baseUrl = ApiConstants.wsGuardUrl;
   
+  Timer? _heartbeatTimer;
+  int _connectionAttempts = 0;
   WebSocketChannel? _channel;
   bool _isConnecting = false;
   bool _shouldReconnect = false;
@@ -28,16 +30,26 @@ class WebSocketService {
     if (_isConnecting || _isConnected) return;
     _isConnecting = true;
     _shouldReconnect = true;
+    _connectionAttempts++;
 
-    final token = await ApiClient.ensureFreshToken();
+    // Refresh token proactively if we've failed a few times
+    String? token;
+    if (_connectionAttempts > 2) {
+      debugPrint('WebSocketService: Multiple failures, attempting explicit token refresh...');
+      token = await ApiClient.refreshToken();
+    } else {
+      token = await ApiClient.ensureFreshToken();
+    }
+
     if (token == null) {
-      debugPrint('WebSocketService: No token found, cannot connect.');
+      debugPrint('WebSocketService: No token available, cannot connect.');
       _isConnecting = false;
+      _handleDisconnect();
       return;
     }
 
     final url = '$_baseUrl?token=$token';
-    debugPrint('WebSocketService: Connecting to WebSocket...');
+    debugPrint('WebSocketService: Connecting (Attempt $_connectionAttempts)...');
 
     try {
       _channel = IOWebSocketChannel.connect(Uri.parse(url));
@@ -46,14 +58,17 @@ class WebSocketService {
       _isConnecting = false;
       _connectionController.add(true);
       _reconnectDelaySeconds = 2; // Reset on success
-      debugPrint('WebSocketService: Connected');
+      _connectionAttempts = 0;
+      debugPrint('WebSocketService: Connected successfully');
+
+      _startHeartbeat();
 
       _channel!.stream.listen(
         (message) {
           _handleMessage(message);
         },
         onDone: () {
-          debugPrint('WebSocketService: Connection closed');
+          debugPrint('WebSocketService: Connection closed by server');
           _handleDisconnect();
         },
         onError: (error) {
@@ -63,34 +78,72 @@ class WebSocketService {
         cancelOnError: true,
       );
     } catch (e) {
-      debugPrint('WebSocketService: Failed to connect: $e');
+      debugPrint('WebSocketService: Exception during connection: $e');
       _isConnecting = false;
       _handleDisconnect();
     }
   }
 
   void disconnect() {
-    debugPrint('WebSocketService: Disconnecting manually');
+    debugPrint('WebSocketService: Manual disconnect requested');
     _shouldReconnect = false;
+    _stopHeartbeat();
     _channel?.sink.close();
     _isConnected = false;
+    _isConnecting = false;
     _connectionController.add(false);
+  }
+
+  void _startHeartbeat() {
+    _stopHeartbeat();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _sendHeartbeat();
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+  }
+
+  void _sendHeartbeat() {
+    if (_isConnected && _channel != null) {
+      try {
+        debugPrint('WebSocketService: Sending heartbeat (ping)');
+        _channel!.sink.add(jsonEncode({'type': 'ping'}));
+      } catch (e) {
+        debugPrint('WebSocketService: Failed to send heartbeat: $e');
+      }
+    }
   }
 
   void _handleMessage(dynamic message) {
     try {
-      final Map<String, dynamic> data = jsonDecode(message);
-      
-      // Filter out heartbeat messages
-      if (data['type'] == 'ping') {
-        debugPrint('WebSocketService: Received heartbeat (ping)');
+      // Handle potential binary data (not expected here but for robustness)
+      if (message is! String) {
+        debugPrint('WebSocketService: Received non-string message, ignoring');
         return;
       }
 
-      debugPrint('WebSocketService: Received business message: ${data['type']}');
+      final Map<String, dynamic> data = jsonDecode(message);
+      
+      // Filter out heartbeat responses or server-initiated pings
+      if (data['type'] == 'ping') {
+        debugPrint('WebSocketService: Received heartbeat (ping) from server');
+        // Optional: send pong if server expects it
+        // _channel?.sink.add(jsonEncode({'type': 'pong'}));
+        return;
+      }
+      
+      if (data['type'] == 'pong') {
+        debugPrint('WebSocketService: Received heartbeat (pong) response from server');
+        return;
+      }
+
+      debugPrint('WebSocketService: Business message received: ${data['type']}');
       _messageController.add(data);
     } catch (e) {
-      debugPrint('WebSocketService: Error decoding message: $e');
+      debugPrint('WebSocketService: Error decoding message: $e - Content: $message');
     }
   }
 
@@ -98,9 +151,10 @@ class WebSocketService {
     _isConnected = false;
     _isConnecting = false;
     _connectionController.add(false);
+    _stopHeartbeat();
     
     if (_shouldReconnect) {
-      debugPrint('WebSocketService: Reconnecting in $_reconnectDelaySeconds seconds...');
+      debugPrint('WebSocketService: Scheduled reconnection in $_reconnectDelaySeconds s');
       
       Future.delayed(Duration(seconds: _reconnectDelaySeconds), () async {
         if (_shouldReconnect) {
@@ -113,6 +167,7 @@ class WebSocketService {
 
   void dispose() {
     _shouldReconnect = false;
+    _stopHeartbeat();
     _channel?.sink.close();
     _messageController.close();
     _connectionController.close();

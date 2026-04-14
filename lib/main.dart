@@ -127,12 +127,19 @@ class MyApp extends ConsumerWidget {
       ],
       redirect: (context, state) {
         final currentPath = state.uri.toString();
+        log('Redirect: isLoggedIn=$isLoggedIn, path=$currentPath');
 
         final publicPaths = ['/login', '/otp'];
         final isPublic = publicPaths.any((p) => currentPath.startsWith(p));
 
-        if (!isLoggedIn && !isPublic) return '/login';
-        if (isLoggedIn && currentPath == '/login') return '/home';
+        if (!isLoggedIn && !isPublic) {
+          log('Redirect: Not logged in, sending to /login');
+          return '/login';
+        }
+        if (isLoggedIn && (currentPath == '/login' || currentPath == '/')) {
+          log('Redirect: Logged in, sending to /home');
+          return '/home';
+        }
 
         return null;
       },

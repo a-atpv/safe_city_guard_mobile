@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import '../../core/api_client.dart';
 import '../../core/token_storage.dart';
@@ -6,13 +7,6 @@ import '../../core/token_storage.dart';
 class AuthRepository {
   final Dio _dio = dio;
   final TokenStorage _tokenStorage = TokenStorage();
-
-  String _dioMessage(DioException e, String fallback) {
-    final data = e.response?.data;
-    if (data is Map && data['detail'] != null) return data['detail'].toString();
-    if (data is String && data.isNotEmpty) return data;
-    return fallback;
-  }
 
   Future<bool> requestOtp(String email) async {
     try {
@@ -40,7 +34,7 @@ class AuthRepository {
         if (success is num) return success != 0;
         if (success is String) return success.toLowerCase() == 'true';
       }
-      throw Exception(_dioMessage(e, 'Failed to request OTP'));
+      throw Exception(ApiClient.extractError(e, 'Failed to request OTP'));
     } catch (e) {
       throw Exception('Failed to request OTP');
     }
@@ -57,7 +51,7 @@ class AuthRepository {
       );
       // Device registration is now handled by the controller
     } on DioException catch (e) {
-      throw Exception(_dioMessage(e, 'Failed to verify OTP'));
+      throw Exception(ApiClient.extractError(e, 'Failed to verify OTP'));
     } catch (e) {
       throw Exception('Failed to verify OTP');
     }
@@ -87,7 +81,7 @@ class AuthRepository {
       try {
         await unregisterDevice(deviceToken);
       } catch (e) {
-        print('Device unregistration failed, but proceeding: $e');
+        debugPrint('Device unregistration failed, but proceeding: $e');
       }
     }
     await _tokenStorage.clearTokens();

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
 class LocationService {
@@ -41,7 +42,7 @@ class LocationService {
       );
       onLocationUpdate(position.latitude, position.longitude);
     } catch (e) {
-      print('Error getting initial location: $e');
+      debugPrint('Error getting initial location: $e');
     }
 
     // Set up a position stream / timer. For tracking every 15-30 seconds, a stream with distance filter or time interval is good.
@@ -57,7 +58,7 @@ class LocationService {
         );
         onLocationUpdate(position.latitude, position.longitude);
       } catch (e) {
-        print('Error getting periodic location: $e');
+        debugPrint('Error getting periodic location: $e');
       }
     });
   }

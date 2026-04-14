@@ -9,7 +9,7 @@ class ProfileRepository {
       final response = await _dio.get('/me');
       return response.data;
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to get profile');
+      throw Exception(ApiClient.extractError(e, 'Failed to get profile'));
     }
   }
 
@@ -17,7 +17,7 @@ class ProfileRepository {
     try {
       await _dio.patch('/me', data: data);
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to update profile');
+      throw Exception(ApiClient.extractError(e, 'Failed to update profile'));
     }
   }
 
@@ -26,7 +26,7 @@ class ProfileRepository {
       final response = await _dio.get('/settings');
       return response.data;
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to get settings');
+      throw Exception(ApiClient.extractError(e, 'Failed to get settings'));
     }
   }
 
@@ -34,7 +34,7 @@ class ProfileRepository {
     try {
       await _dio.patch('/settings', data: data);
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to update settings');
+      throw Exception(ApiClient.extractError(e, 'Failed to update settings'));
     }
   }
 }

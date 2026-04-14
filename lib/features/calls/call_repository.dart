@@ -19,7 +19,7 @@ class CallRepository {
       if (e.response?.statusCode == 404) {
         return const [];
       }
-      throw Exception(e.response?.data['detail'] ?? 'Failed to fetch active call');
+      throw Exception(ApiClient.extractError(e, 'Failed to fetch active call'));
     }
   }
 
@@ -27,7 +27,7 @@ class CallRepository {
     try {
       await _dio.post('/call/$callId/accept');
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to accept call');
+      throw Exception(ApiClient.extractError(e, 'Failed to accept call'));
     }
   }
 
@@ -35,7 +35,7 @@ class CallRepository {
     try {
       await _dio.post('/call/$callId/decline');
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to decline call');
+      throw Exception(ApiClient.extractError(e, 'Failed to decline call'));
     }
   }
 
@@ -43,7 +43,7 @@ class CallRepository {
     try {
       await _dio.post('/call/$callId/en-route');
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to update status to en-route');
+      throw Exception(ApiClient.extractError(e, 'Failed to update status to en-route'));
     }
   }
 
@@ -51,7 +51,7 @@ class CallRepository {
     try {
       await _dio.post('/call/$callId/arrived');
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to update status to arrived');
+      throw Exception(ApiClient.extractError(e, 'Failed to update status to arrived'));
     }
   }
 
@@ -59,7 +59,7 @@ class CallRepository {
     try {
       await _dio.post('/call/$callId/complete');
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to complete call');
+      throw Exception(ApiClient.extractError(e, 'Failed to complete call'));
     }
   }
 
@@ -70,7 +70,7 @@ class CallRepository {
         'report_text': text,
       });
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to send report');
+      throw Exception(ApiClient.extractError(e, 'Failed to send report'));
     }
   }
 
@@ -80,7 +80,7 @@ class CallRepository {
         'message': text,
       });
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to send message');
+      throw Exception(ApiClient.extractError(e, 'Failed to send message'));
     }
   }
 
@@ -89,7 +89,7 @@ class CallRepository {
       final response = await _dio.get('/call/$callId/messages');
       return response.data;
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to fetch messages');
+      throw Exception(ApiClient.extractError(e, 'Failed to fetch messages'));
     }
   }
 
@@ -109,7 +109,7 @@ class CallRepository {
       final response = await _dio.get('/history', queryParameters: queryParams);
       return response.data;
     } on DioException catch (e) {
-      throw Exception(e.response?.data['detail'] ?? 'Failed to fetch call history');
+      throw Exception(ApiClient.extractError(e, 'Failed to fetch call history'));
     }
   }
 }

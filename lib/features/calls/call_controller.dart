@@ -90,9 +90,26 @@ class CallController extends Notifier<CallState> {
   Future<void> _fetchActiveCall() async {
     try {
       final calls = await _repository.getAvailableCalls();
+
+      Map<String, dynamic>? active;
+      final List<Map<String, dynamic>> available = [];
+
+      for (final call in calls) {
+        final status = call['status']?.toString().toLowerCase();
+        // Active statuses: accepted, en_route, arrived
+        if (status == 'accepted' ||
+            status == 'en_route' ||
+            status == 'en-route' ||
+            status == 'arrived') {
+          active ??= call; // Take the first active one as THE active call
+        } else {
+          available.add(call);
+        }
+      }
+
       state = state.copyWith(
-        availableCalls: calls,
-        activeCall: () => calls.isNotEmpty ? calls.first : null,
+        availableCalls: available,
+        activeCall: () => active,
         isLoading: false,
         error: null,
       );
@@ -101,7 +118,7 @@ class CallController extends Notifier<CallState> {
         availableCalls: const [],
         activeCall: () => null,
         isLoading: false,
-        error: 'Failed to fetch active call: $e',
+        error: e.toString().replaceFirst('Exception: ', ''),
       );
     }
   }
@@ -111,7 +128,7 @@ class CallController extends Notifier<CallState> {
       await _repository.acceptCall(callId);
       await _fetchActiveCall();
     } catch (e) {
-      state = state.copyWith(error: 'Accept failed: $e');
+      state = state.copyWith(error: e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -121,7 +138,7 @@ class CallController extends Notifier<CallState> {
       // Wait for it to clear from active calls
       await _fetchActiveCall();
     } catch (e) {
-      state = state.copyWith(error: 'Decline failed: $e');
+      state = state.copyWith(error: e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -136,8 +153,12 @@ class CallController extends Notifier<CallState> {
       }
       await _fetchActiveCall();
     } catch (e) {
-      state = state.copyWith(error: 'Update status failed: $e');
+      state = state.copyWith(error: e.toString().replaceFirst('Exception: ', ''));
     }
+  }
+
+  void clearError() {
+    state = state.copyWith(error: null);
   }
 
   Future<void> sendReport(String callId, String category, String text) async {

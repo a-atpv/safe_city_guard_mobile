@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'api_constants.dart';
 import 'token_storage.dart';
@@ -81,14 +82,16 @@ class ApiClient {
     if (!_interceptorsAdded) {
       _interceptorsAdded = true;
 
-      _dio.interceptors.add(LogInterceptor(
-        request: true,
-        requestHeader: false,
-        requestBody: true,
-        responseHeader: false,
-        responseBody: true,
-        error: true,
-      ));
+      if (kDebugMode) {
+        _dio.interceptors.add(LogInterceptor(
+          request: true,
+          requestHeader: false,
+          requestBody: true,
+          responseHeader: false,
+          responseBody: true,
+          error: true,
+        ));
+      }
 
       _dio.interceptors.add(
         InterceptorsWrapper(
@@ -121,6 +124,26 @@ class ApiClient {
       );
     }
     return _dio;
+  }
+
+  static String extractError(dynamic e, String fallback) {
+    if (e is DioException) {
+      final data = e.response?.data;
+      if (data is Map && data['detail'] != null) {
+        return data['detail'].toString();
+      }
+      if (data is String && data.isNotEmpty) {
+        return data;
+      }
+      if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        return 'Connection timed out';
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return 'No internet connection';
+      }
+    }
+    return fallback;
   }
 }
 

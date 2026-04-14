@@ -68,7 +68,7 @@ class ShiftController extends Notifier<ShiftState> {
       }
     } catch (e) {
       state = state.copyWith(
-          isLoading: false, error: 'Failed to fetch shift status');
+          isLoading: false, error: e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -84,8 +84,12 @@ class ShiftController extends Notifier<ShiftState> {
       }
       state = state.copyWith(isOnline: value, isLoading: false);
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: e.toString().replaceFirst('Exception: ', ''));
     }
+  }
+
+  void clearError() {
+    state = state.copyWith(error: null);
   }
 
   void _onGoingOnline() {

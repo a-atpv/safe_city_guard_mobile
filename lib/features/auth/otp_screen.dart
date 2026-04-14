@@ -199,7 +199,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                                     final success = await ref
                                         .read(authControllerProvider.notifier)
                                         .verifyOtp(widget.email, code);
-                                    if (success && mounted) {
+                                    if (success && context.mounted) {
                                       context.go('/home');
                                     }
                                   }
