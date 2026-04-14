@@ -7,7 +7,7 @@ class ShiftRepository {
 
   Future<bool> getCurrentShiftStatus() async {
     try {
-      final response = await _dio.get('/shift/current');
+      final response = await _dio.get('shift/current');
       return response.data['is_online'] ?? false;
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
@@ -19,7 +19,7 @@ class ShiftRepository {
 
   Future<void> startShift() async {
     try {
-      await _dio.post('/shift/start');
+      await _dio.post('shift/start');
     } on DioException catch (e) {
       throw Exception(ApiClient.extractError(e, 'Failed to start shift'));
     }
@@ -27,7 +27,7 @@ class ShiftRepository {
 
   Future<void> endShift() async {
     try {
-      await _dio.post('/shift/end');
+      await _dio.post('shift/end');
     } on DioException catch (e) {
       throw Exception(ApiClient.extractError(e, 'Failed to end shift'));
     }
@@ -35,7 +35,7 @@ class ShiftRepository {
 
   Future<void> updateLocation(double latitude, double longitude) async {
     try {
-      await _dio.post('/location', data: {
+      await _dio.post('location', data: {
         'latitude': latitude,
         'longitude': longitude,
       });

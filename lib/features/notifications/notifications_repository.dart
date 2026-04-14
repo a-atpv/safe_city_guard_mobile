@@ -13,7 +13,7 @@ class NotificationsRepository {
     try {
       final token = await TokenStorage().getAccessToken();
       final response = await _dio.get(
-        '/notifications',
+        'notifications',
         queryParameters: {'limit': limit, 'offset': offset},
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
@@ -27,7 +27,7 @@ class NotificationsRepository {
     try {
       final token = await TokenStorage().getAccessToken();
       await _dio.patch(
-        '/notifications/$notificationId/read',
+        'notifications/$notificationId/read',
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
     } on DioException catch (e) {
@@ -39,7 +39,7 @@ class NotificationsRepository {
     try {
       final token = await TokenStorage().getAccessToken();
       await _dio.post(
-        '/notifications/read-all',
+        'notifications/read-all',
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
     } on DioException catch (e) {

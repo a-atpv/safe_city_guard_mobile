@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../core/app_colors.dart';
 import '../map/map_screen.dart';
 import '../incidents/incidents_list_screen.dart';
-import '../notifications/notifications_screen.dart';
 import '../profile/profile_screen.dart';
 import '../calls/call_offer_listener.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,7 +19,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _screens = const [
     MapScreen(),
     IncidentsListScreen(),
-    NotificationsScreen(),
     ProfileScreen(),
   ];
 
@@ -57,8 +55,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               children: [
                 _buildNavItem(0, Icons.shield_outlined, Icons.shield),
                 _buildNavItem(1, Icons.access_time_outlined, Icons.access_time_filled),
-                _buildNavItem(2, Icons.notifications_outlined, Icons.notifications),
-                _buildNavItem(3, Icons.person_outline, Icons.person),
+                _buildNavItem(2, Icons.person_outline, Icons.person),
               ],
             ),
           ),

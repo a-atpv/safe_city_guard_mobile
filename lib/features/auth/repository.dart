@@ -10,7 +10,7 @@ class AuthRepository {
 
   Future<bool> requestOtp(String email) async {
     try {
-      final response = await _dio.post('/auth/request-otp', data: {'email': email});
+      final response = await dioPublic.post(ApiConstants.login, data: {'email': email});
       final data = response.data;
 
       // Backend response example:
@@ -42,7 +42,7 @@ class AuthRepository {
 
   Future<void> verifyOtp(String email, String code) async {
     try {
-      final response = await _dio.post('/auth/verify-otp', data: {'email': email, 'code': code});
+      final response = await dioPublic.post(ApiConstants.verifyOtp, data: {'email': email, 'code': code});
       final data = response.data;
       await _tokenStorage.saveTokens(
         data['access_token'],
@@ -59,9 +59,11 @@ class AuthRepository {
 
   Future<void> registerDevice(String token) async {
     try {
-      await _dio.post('/device/register', data: {
+      await _dio.post(ApiConstants.registerDevice, data: {
         'device_token': token,
         'device_type': Platform.isIOS ? 'ios' : 'android',
+        'device_model': 'Guard Mobile Device',
+        'app_version': '1.0.0',
       });
     } catch (e) {
       throw Exception('Failed to register device');
@@ -70,7 +72,7 @@ class AuthRepository {
 
   Future<void> unregisterDevice(String token) async {
     try {
-      await _dio.delete('/device/$token');
+      await _dio.delete(ApiConstants.unregisterDevice + token);
     } catch (e) {
       throw Exception('Failed to unregister device');
     }

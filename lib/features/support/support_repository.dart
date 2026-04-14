@@ -7,7 +7,7 @@ class SupportRepository {
 
   Future<Map<String, dynamic>> getContacts() async {
     try {
-      final response = await _dio.get('/support/contacts');
+      final response = await _dio.get('support/contacts');
       return response.data;
     } on DioException catch (e) {
       throw Exception(e.response?.data['detail'] ?? 'Failed to fetch support contacts');
@@ -16,7 +16,7 @@ class SupportRepository {
 
   Future<List<dynamic>> getFAQ() async {
     try {
-      final response = await _dio.get('/support/faq', queryParameters: {'target': 'guard'});
+      final response = await _dio.get('support/faq', queryParameters: {'target': 'guard'});
       return response.data['items'] ?? [];
     } on DioException catch (e) {
       throw Exception(e.response?.data['detail'] ?? 'Failed to fetch FAQ');
