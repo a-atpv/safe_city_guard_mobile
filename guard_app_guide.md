@@ -682,6 +682,28 @@ DELETE /guard/device/{token}
 > [!IMPORTANT]
 > Call `register` immediately after login and whenever the FCM token refreshes. Call `unregister` on logout. `device_type` must be exactly `"ios"` or `"android"`.
 
+### 9.3 Notification Handling Logic
+
+The app uses `firebase_messaging` and `flutter_local_notifications` to handle incoming alerts even when the app is in the background.
+
+**Payload Types:**
+- `call_offer`: New emergency request nearby.
+- `call_status_update`: Update on your assigned call.
+- `call_cancelled`: System or user cancelled the call.
+
+**Handling Code:**
+```dart
+void _handleNotificationPayload(Map<String, dynamic> data) {
+  final context = rootNavigatorKey.currentContext;
+  if (context != null) {
+    if (data.containsKey('call_id')) {
+      final callId = int.tryParse(data['call_id'].toString()) ?? 0;
+      GoRouter.of(context).push('/active-call', extra: callId);
+    }
+  }
+}
+```
+
 ---
 
 ## 10. Guard Settings

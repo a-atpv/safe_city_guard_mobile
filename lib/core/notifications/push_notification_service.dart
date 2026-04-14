@@ -4,6 +4,8 @@ import 'dart:developer';
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:go_router/go_router.dart';
+import '../../main.dart';
 
 /// Top-level function to handle background messages.
 /// This must be a top-level function (not inside a class) to work correctly.
@@ -149,8 +151,20 @@ class PushNotificationService {
   }
 
   void _handleNotificationPayload(Map<String, dynamic> data) {
-    // TODO: Implement navigation or logic based on data
-    // Example: If data contains 'call_id', navigate to ActiveCallScreen
     log('Handling notification payload: $data');
+    // To avoid circular dependency if push_notification_service is imported in main.dart:
+    // We already have go_router in the project, we could also use that if we had access to the router instance.
+    // However, rootNavigatorKey.currentState?.pushNamed(...) is a standard way.
+    
+    final context = rootNavigatorKey.currentContext;
+    if (context != null) {
+      // If we have a call_id, we might want to go to active-call
+      if (data.containsKey('call_id')) {
+        final callId = int.tryParse(data['call_id'].toString()) ?? 0;
+        GoRouter.of(context).push('/active-call', extra: callId);
+      } else {
+        GoRouter.of(context).go('/home');
+      }
+    }
   }
 }

@@ -337,25 +337,43 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               const SizedBox(height: 24),
 
               // ─── Calls Section ───
-              if (callState.activeCall != null || callState.availableCalls.isNotEmpty) ...[
-                const Text(
-                  'Вызовы:',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
+              const Text(
+                'Доступные вызовы:',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
                 ),
-                const SizedBox(height: 12),
-                
+              ),
+              const SizedBox(height: 12),
+
+              if (callState.isLoading)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardDark,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.divider, width: 0.5),
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                )
+              else ...[
                 // Show active call first if it exists
                 if (callState.activeCall != null)
                   _buildCallCard(callState.activeCall!, isActive: true),
-                
-                // Show remaining available calls
-                ...callState.availableCalls.map((c) => _buildCallCard(c, isActive: false)),
-              ] else
-                _buildEmptyCallsState(),
+
+                // Show available calls
+                if (callState.availableCalls.isNotEmpty)
+                  ...callState.availableCalls.map((c) => _buildCallCard(c, isActive: false))
+                else if (callState.activeCall == null)
+                  _buildEmptyCallsState(),
+              ],
 
               const SizedBox(height: 20),
             ],

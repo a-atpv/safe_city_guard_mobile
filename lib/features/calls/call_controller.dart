@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'call_repository.dart';
-import '../home/shift_controller.dart';
 
 class CallState {
   final Map<String, dynamic>? activeCall;
@@ -44,19 +43,8 @@ class CallController extends Notifier<CallState> {
   CallState build() {
     _repository = ref.read(callRepositoryProvider);
 
-    // Listen to shift status
-    ref.listen<ShiftState>(shiftControllerProvider, (previous, next) {
-      if (next.isOnline) {
-        _startPolling();
-      } else {
-        _stopPolling();
-      }
-    });
-
-    final isOnline = ref.read(shiftControllerProvider).isOnline;
-    if (isOnline) {
-      _startPolling();
-    }
+    // Always fetch calls regardless of shift status
+    _startPolling();
 
     ref.onDispose(() {
       _pollingTimer?.cancel();
