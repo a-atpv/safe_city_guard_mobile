@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/app_colors.dart';
-import '../../core/widgets/shield_logo.dart';
 import 'auth_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -78,7 +77,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 // Logo
                 FadeTransition(
                   opacity: _fadeAnim,
-                  child: const ShieldLogo(size: 100),
+                  child: Image.asset(
+                    'assets/app_icon_transparent.png',
+                    width: 110,
+                    height: 110,
+                    fit: BoxFit.contain,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 FadeTransition(
