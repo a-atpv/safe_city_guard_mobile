@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'api_constants.dart';
@@ -21,15 +22,18 @@ class ApiClient {
 
   static Future<String?> refreshToken() async {
     if (_isRefreshing) {
+      log('ApiClient: Already refreshing, waiting for existing completer...');
       return _refreshCompleter?.future;
     }
 
+    log('ApiClient: Starting token refresh process...');
     _isRefreshing = true;
     _refreshCompleter = Completer<String?>();
 
     try {
       final refreshToken = await TokenStorage().getRefreshToken();
       if (refreshToken == null) {
+        log('ApiClient: No refresh token found in storage.');
         throw Exception('No refresh token available');
       }
 
@@ -40,6 +44,7 @@ class ApiClient {
         receiveTimeout: const Duration(seconds: 10),
       ));
 
+      log('ApiClient: Calling refresh endpoint: ${ApiConstants.refresh}');
       final response = await refreshDio.post(
         ApiConstants.refresh,
         data: {'refresh_token': refreshToken},
@@ -48,6 +53,12 @@ class ApiClient {
       final newAccessToken = response.data['access_token'];
       final newRefreshToken = response.data['refresh_token'];
 
+      if (newAccessToken == null) {
+        log('ApiClient: Refresh response did not contain access_token.');
+        throw Exception('Invalid refresh response');
+      }
+
+      log('ApiClient: Token refresh successful. Saving new tokens.');
       // Save new tokens
       await TokenStorage().saveTokens(newAccessToken, newRefreshToken);
       
@@ -55,9 +66,11 @@ class ApiClient {
       _refreshCompleter!.complete(newAccessToken);
       return newAccessToken;
     } catch (refreshError) {
+      log('ApiClient: Token refresh failed: $refreshError');
       _refreshCompleter!.complete(null);
       
       // Refresh failed - clear tokens and trigger logout
+      log('ApiClient: Clearing tokens and triggering global logout.');
       await TokenStorage().clearTokens();
       _logoutController.add(null);
       
@@ -82,31 +95,40 @@ class ApiClient {
     if (!_interceptorsAdded) {
       _interceptorsAdded = true;
 
-      if (kDebugMode) {
-        _dio.interceptors.add(LogInterceptor(
-          request: true,
-          requestHeader: false,
-          requestBody: true,
-          responseHeader: false,
-          responseBody: true,
-          error: true,
-        ));
-      }
+
 
       _dio.interceptors.add(
         InterceptorsWrapper(
           onRequest: (options, handler) async {
             final token = await TokenStorage().getAccessToken();
             if (token != null) {
+              log('ApiClient: Adding Authorization header for ${options.uri}');
               options.headers['Authorization'] = 'Bearer $token';
+            } else {
+              log('ApiClient: No token found in storage for ${options.uri}');
             }
             return handler.next(options);
           },
           onError: (DioException e, handler) async {
-            // Check if the error is a 401 Unauthorized
-            if (e.response?.statusCode == 401) {
+            final responseData = e.response?.data;
+            final String detail = responseData is Map ? (responseData['detail'] ?? '').toString() : '';
+            final statusCode = e.response?.statusCode;
+
+            // Check if the error is a 401 Unauthorized or a 403 Forbidden (used by backend for auth issues)
+            if (statusCode == 401 || (statusCode == 403 && detail.toLowerCase().contains('authenticated'))) {
+              log('ApiClient: Authentication error encountered ($statusCode). Detail: $detail');
+
+              // If it's a specific "Invalid guard token" error, don't even try to refresh
+              if (detail.contains('Invalid guard token')) {
+                log('ApiClient: Token is explicitly invalid. Triggering logout.');
+                await TokenStorage().clearTokens();
+                _logoutController.add(null);
+                return handler.next(e);
+              }
+
               final newToken = await refreshToken();
               if (newToken != null) {
+                log('ApiClient: Token refreshed successfully. Retrying request.');
                 // Retry the original request with the new token
                 final opts = e.requestOptions;
                 opts.headers['Authorization'] = 'Bearer $newToken';
@@ -116,12 +138,25 @@ class ApiClient {
                 } catch (retryError) {
                   return handler.next(e);
                 }
+              } else {
+                log('ApiClient: Token refresh failed. Error will propagate.');
               }
             }
             return handler.next(e);
           },
         ),
       );
+
+      if (kDebugMode) {
+        _dio.interceptors.add(LogInterceptor(
+          request: true,
+          requestHeader: true, // Enabled headers for debugging tokens
+          requestBody: true,
+          responseHeader: false,
+          responseBody: true,
+          error: true,
+        ));
+      }
     }
     return _dio;
   }

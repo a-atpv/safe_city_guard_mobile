@@ -4,9 +4,9 @@ class ApiConstants {
   static const String wsGuardUrl = 'wss://safe-city-back-7c8ed50edd7d.herokuapp.com/api/v1/ws/guard';
   
   // Auth endpoints
-  static const String login = 'auth/request-otp';
-  static const String verifyOtp = 'auth/verify-otp';
-  static const String refresh = 'auth/refresh';
+  static const String login = 'guard/auth/request-otp';
+  static const String verifyOtp = 'guard/auth/verify-otp';
+  static const String refresh = 'guard/auth/refresh';
   
   // Device registration
   static const String registerDevice = 'device/register';
