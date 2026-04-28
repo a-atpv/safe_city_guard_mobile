@@ -337,9 +337,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               const SizedBox(height: 24),
 
               // ─── Calls Section ───
-              const Text(
-                'Доступные вызовы:',
-                style: TextStyle(
+              Text(
+                callState.activeCall != null ? 'Текущий вызов:' : 'Доступные вызовы:',
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textPrimary,
@@ -363,15 +363,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ),
                   ),
                 )
-              else ...[
-                // Show active call first if it exists
-                if (callState.activeCall != null)
-                  _buildCallCard(callState.activeCall!, isActive: true),
-
-                // Show available calls
+              else if (callState.activeCall != null) ...[
+                // Show ONLY active call if it exists
+                _buildCallCard(callState.activeCall!, isActive: true),
+              ] else ...[
+                // Show available calls ONLY if no active call
                 if (callState.availableCalls.isNotEmpty)
                   ...callState.availableCalls.map((c) => _buildCallCard(c, isActive: false))
-                else if (callState.activeCall == null)
+                else
                   _buildEmptyCallsState(),
               ],
 

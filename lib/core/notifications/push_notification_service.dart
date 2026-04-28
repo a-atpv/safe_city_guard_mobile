@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
-import '../../main.dart';
+import '../router/app_router.dart';
 
 /// Top-level function to handle background messages.
 /// This must be a top-level function (not inside a class) to work correctly.
@@ -112,15 +112,47 @@ class PushNotificationService {
     // 7. Check if the app was launched from a terminated state via a notification
     RemoteMessage? initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
-      log('App launched from terminated state via notification');
+      log('App launched from terminated state via FCM notification');
       _handleNotificationPayload(initialMessage.data);
+    }
+
+    // 7.1 Also check for local notification launch details
+    final NotificationAppLaunchDetails? launchDetails = 
+        await _localNotifications.getNotificationAppLaunchDetails();
+    if (launchDetails?.didNotificationLaunchApp ?? false) {
+      final payload = launchDetails?.notificationResponse?.payload;
+      if (payload != null) {
+        log('App launched from terminated state via Local Notification');
+        try {
+          final data = jsonDecode(payload) as Map<String, dynamic>;
+          _handleNotificationPayload(data);
+        } catch (e) {
+          log('Error decoding local notification payload: $e');
+        }
+      }
     }
 
     _isInitialized = true;
     log('PushNotificationService initialized');
     
     // Proactively get token to ensure we have it
-    await getFcmToken();
+    final token = await getFcmToken();
+    if (token != null) {
+      _onTokenCallback?.call(token);
+    }
+
+    // 8. Listen for token refreshes
+    _fcm.onTokenRefresh.listen((newToken) {
+      log('Push Notifications: Token refreshed');
+      _onTokenCallback?.call(newToken);
+    });
+  }
+
+  void Function(String token)? _onTokenCallback;
+
+  /// Sets a callback to be called whenever a new FCM token is obtained or refreshed.
+  void setOnTokenCallback(void Function(String token) callback) {
+    _onTokenCallback = callback;
   }
 
   Future<String?> getFcmToken() async {
@@ -194,19 +226,36 @@ class PushNotificationService {
 
   void _handleNotificationPayload(Map<String, dynamic> data) {
     log('Handling notification payload: $data');
-    // To avoid circular dependency if push_notification_service is imported in main.dart:
-    // We already have go_router in the project, we could also use that if we had access to the router instance.
-    // However, rootNavigatorKey.currentState?.pushNamed(...) is a standard way.
     
+    // Use a microtask or future to allow the current frame to complete
+    // and wait for the navigator context if it's not yet ready
+    _processNavigation(data);
+  }
+
+  Future<void> _processNavigation(Map<String, dynamic> data) async {
+    // Wait for context to be available (max 10 seconds)
+    // This is important for app launches from terminated state
+    int attempts = 0;
+    while (rootNavigatorKey.currentContext == null && attempts < 20) {
+      log('Waiting for rootNavigatorKey.currentContext... attempt ${attempts + 1}');
+      await Future.delayed(const Duration(milliseconds: 500));
+      attempts++;
+    }
+
     final context = rootNavigatorKey.currentContext;
-    if (context != null) {
+    if (context != null && context.mounted) {
       // If we have a call_id, we might want to go to active-call
       if (data.containsKey('call_id')) {
-        final callId = int.tryParse(data['call_id'].toString()) ?? 0;
+        final callIdStr = data['call_id'].toString();
+        final callId = int.tryParse(callIdStr) ?? 0;
+        log('Navigating to /active-call with callId: $callId');
         GoRouter.of(context).push('/active-call', extra: callId);
       } else {
+        log('Navigating to /home');
         GoRouter.of(context).go('/home');
       }
+    } else {
+      log('ERROR: Could not get context for navigation after waiting.');
     }
   }
 }

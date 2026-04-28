@@ -43,17 +43,14 @@ class CallController extends Notifier<CallState> {
   CallState build() {
     _repository = ref.read(callRepositoryProvider);
 
-    // Always fetch calls regardless of shift status
-    _startPolling();
-
     ref.onDispose(() {
       _pollingTimer?.cancel();
     });
 
-    return const CallState();
+    return const CallState(isLoading: false);
   }
 
-  void _startPolling() {
+  void startPolling() {
     _fetchActiveCall(); // Initial fetch
     _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) {
@@ -61,7 +58,7 @@ class CallController extends Notifier<CallState> {
     });
   }
 
-  void _stopPolling() {
+  void stopPolling() {
     _pollingTimer?.cancel();
     _pollingTimer = null;
     state = state.copyWith(

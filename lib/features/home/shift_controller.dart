@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/location/location_service.dart';
 import '../../core/websocket/websocket_service.dart';
@@ -34,7 +35,7 @@ final shiftRepositoryProvider = Provider((ref) => ShiftRepository());
 final shiftControllerProvider =
     NotifierProvider<ShiftController, ShiftState>(ShiftController.new);
 
-class ShiftController extends Notifier<ShiftState> {
+class ShiftController extends Notifier<ShiftState> with WidgetsBindingObserver {
   late final ShiftRepository _repository;
   LocationService? _locationService;
 
@@ -43,6 +44,7 @@ class ShiftController extends Notifier<ShiftState> {
     _repository = ref.read(shiftRepositoryProvider);
     Future.microtask(() => checkCurrentShift());
 
+    // Listen for WebSocket connection to refresh calls
     final wsSubscription =
         webSocketServiceProvider.connectionStream.listen((isConnected) {
       if (isConnected) {
@@ -50,12 +52,23 @@ class ShiftController extends Notifier<ShiftState> {
       }
     });
 
+    // Register lifecycle observer
+    WidgetsBinding.instance.addObserver(this);
+
     ref.onDispose(() {
+      WidgetsBinding.instance.removeObserver(this);
       _stopLocationTracking();
       wsSubscription.cancel();
     });
 
     return const ShiftState();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      checkCurrentShift();
+    }
   }
 
   Future<void> checkCurrentShift() async {
@@ -65,6 +78,8 @@ class ShiftController extends Notifier<ShiftState> {
 
       if (isOnline) {
         _onGoingOnline();
+      } else {
+        _onGoingOffline();
       }
     } catch (e) {
       state = state.copyWith(
@@ -95,11 +110,13 @@ class ShiftController extends Notifier<ShiftState> {
   void _onGoingOnline() {
     _startLocationTracking();
     webSocketServiceProvider.connect();
+    ref.read(callControllerProvider.notifier).startPolling();
   }
 
   void _onGoingOffline() {
     _stopLocationTracking();
     webSocketServiceProvider.disconnect();
+    ref.read(callControllerProvider.notifier).stopPolling();
   }
 
   void _startLocationTracking() {
@@ -114,5 +131,4 @@ class ShiftController extends Notifier<ShiftState> {
   void _stopLocationTracking() {
     _locationService?.stopTracking();
   }
-
 }

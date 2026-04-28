@@ -2,50 +2,54 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import 'core/app_theme.dart';
 import 'core/app_colors.dart';
 import 'core/notifications/push_notification_service.dart';
+import 'core/router/app_router.dart';
 import 'features/auth/auth_controller.dart';
-import 'features/auth/login_screen.dart';
-import 'features/auth/otp_screen.dart';
-import 'features/home/home_screen.dart';
-import 'features/incidents/incident_detail_screen.dart';
-import 'features/calls/call_report_screen.dart';
-import 'features/calls/call_history_screen.dart';
-import 'features/settings/settings_screen.dart';
-import 'features/support/support_screen.dart';
-import 'features/calls/active_call_screen.dart';
-import 'features/calls/call_chat_screen.dart';
-
-final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 1. Initialize Firebase with timeout and options
   try {
-    // Initialize Firebase
-    await Firebase.initializeApp();
-    
-    // Initialize Push Notifications
-    final pushService = PushNotificationService();
-    await pushService.initialize();
-    
-    log('Firebase and Push Notifications initialized');
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    ).timeout(const Duration(seconds: 10));
+    log('Firebase initialized successfully');
   } catch (e) {
-    log('Firebase initialization failed: $e');
+    log('ERROR: Firebase initialization failed or timed out: $e');
   }
 
+  // 2. Initialize Push Notifications with timeout
+  try {
+    final pushService = PushNotificationService();
+    await pushService.initialize().timeout(const Duration(seconds: 10));
+    log('PushNotificationService initialized successfully');
+  } catch (e) {
+    log('ERROR: Push Notifications failed to initialize or timed out: $e');
+  }
+
+  // Set status bar and navigation bar styles
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark, // For iOS
       systemNavigationBarColor: Color(0xFF0D1530),
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
+
+  // Lock orientation to portrait
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -57,10 +61,7 @@ class MyApp extends ConsumerWidget {
     final isInitialized = ref.watch(
       authControllerProvider.select((s) => s.isInitialized),
     );
-    final isLoggedIn = ref.watch(
-      authControllerProvider.select((s) => s.isLoggedIn),
-    );
-
+    
     // Show splash while checking stored tokens
     if (!isInitialized) {
       return MaterialApp(
@@ -70,86 +71,17 @@ class MyApp extends ConsumerWidget {
       );
     }
 
-    final router = GoRouter(
-      navigatorKey: rootNavigatorKey,
-      initialLocation: isLoggedIn ? '/home' : '/login',
-      routes: [
-        GoRoute(
-          path: '/login',
-          builder: (context, state) => const LoginScreen(),
-        ),
-        GoRoute(
-          path: '/otp',
-          builder: (context, state) {
-            final email =
-                state.extra is String ? state.extra as String : '';
-            return OtpScreen(email: email);
-          },
-        ),
-        GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
-        GoRoute(
-          path: '/incident-detail',
-          builder: (context, state) => const IncidentDetailScreen(),
-        ),
-        GoRoute(
-          path: '/call-report',
-          builder: (context, state) {
-            final callId = state.extra as String? ?? '';
-            return CallReportScreen(callId: callId);
-          },
-        ),
-        GoRoute(
-          path: '/call-history',
-          builder: (context, state) => const CallHistoryScreen(),
-        ),
-        GoRoute(
-          path: '/settings',
-          builder: (context, state) => const SettingsScreen(),
-        ),
-        GoRoute(
-          path: '/support',
-          builder: (context, state) => const SupportScreen(),
-        ),
-        GoRoute(
-          path: '/active-call',
-          builder: (context, state) {
-            final callId = state.extra as int? ?? 0;
-            return ActiveCallScreen(callId: callId);
-          },
-        ),
-        GoRoute(
-          path: '/call-chat',
-          builder: (context, state) {
-            final callId = state.extra as String? ?? '';
-            return CallChatScreen(callId: callId);
-          },
-        ),
-      ],
-      redirect: (context, state) {
-        final currentPath = state.uri.toString();
-        log('Redirect: isLoggedIn=$isLoggedIn, path=$currentPath');
-
-        final publicPaths = ['/login', '/otp'];
-        final isPublic = publicPaths.any((p) => currentPath.startsWith(p));
-
-        if (!isLoggedIn && !isPublic) {
-          log('Redirect: Not logged in, sending to /login');
-          return '/login';
-        }
-        if (isLoggedIn && (currentPath == '/login' || currentPath == '/')) {
-          log('Redirect: Logged in, sending to /home');
-          return '/home';
-        }
-
-        return null;
-      },
-    );
+    final router = ref.watch(routerProvider);
 
     return MaterialApp.router(
       routerConfig: router,
       title: 'Safe City Guard',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
+      builder: (context, child) => GestureDetector(
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }

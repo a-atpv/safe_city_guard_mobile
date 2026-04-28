@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/websocket/websocket_service.dart';
 import 'widgets/call_offer_sheet.dart';
 import 'sos_alert_manager.dart';
-import '../../main.dart'; // import rootNavigatorKey
+import '../../core/router/app_router.dart'; // import rootNavigatorKey
 
 final callOfferListenerProvider = Provider<CallOfferListener>((ref) {
   return CallOfferListener(ref);

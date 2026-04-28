@@ -51,6 +51,13 @@ class AuthController extends Notifier<AuthState> {
       _logoutSubscription?.cancel();
     });
 
+    // Set up FCM token callback
+    PushNotificationService().setOnTokenCallback((token) {
+      if (state.isLoggedIn) {
+        _registerDevice(token);
+      }
+    });
+
     // Check for saved tokens on startup
     Future.microtask(() => _initAuth());
     return const AuthState(); // isInitialized = false → splash shown
@@ -71,11 +78,11 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  Future<void> _registerDevice() async {
+  Future<void> _registerDevice([String? token]) async {
     try {
-      final token = await PushNotificationService().getFcmToken();
-      if (token != null) {
-        await _repository.registerDevice(token);
+      final fcmToken = token ?? await PushNotificationService().getFcmToken();
+      if (fcmToken != null) {
+        await _repository.registerDevice(fcmToken);
         log('Device registered successfully with token');
       }
     } catch (e) {
