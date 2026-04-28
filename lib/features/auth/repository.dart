@@ -11,7 +11,9 @@ class AuthRepository {
 
   Future<bool> requestOtp(String email) async {
     try {
-      final response = await dioPublic.post(ApiConstants.login, data: {'email': email});
+      // Guard app uses guard auth endpoints.
+      final response =
+          await dioGuardPublic.post(ApiConstants.login, data: {'email': email});
       final data = response.data;
 
       // Backend response example:
@@ -43,7 +45,11 @@ class AuthRepository {
 
   Future<void> verifyOtp(String email, String code) async {
     try {
-      final response = await dioPublic.post(ApiConstants.verifyOtp, data: {'email': email, 'code': code});
+      // Guard app uses guard auth endpoints.
+      final response = await dioGuardPublic.post(
+        ApiConstants.verifyOtp,
+        data: {'email': email, 'code': code},
+      );
       final data = response.data;
       await _tokenStorage.saveTokens(
         data['access_token'],

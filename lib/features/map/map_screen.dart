@@ -25,6 +25,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _locationLoaded = false;
   final MapController _mapController = MapController();
   Timer? _reverseGeocodeDebounce;
+  final Map<String, Future<String>> _callAddressFutureCache = {};
 
   @override
   void initState() {
@@ -121,6 +122,63 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (!mounted) return;
       _reverseGeocode(center);
     });
+  }
+
+  double? _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  Future<String> _resolveCallAddress(Map<String, dynamic> call) async {
+    final directAddress = (call['address'] as String?)?.trim();
+    if (directAddress != null && directAddress.isNotEmpty) {
+      return directAddress;
+    }
+
+    final locationAddress = (call['location']?['address'] as String?)?.trim();
+    if (locationAddress != null && locationAddress.isNotEmpty) {
+      return locationAddress;
+    }
+
+    final lat = _asDouble(call['latitude']) ?? _asDouble(call['location']?['latitude']);
+    final lng = _asDouble(call['longitude']) ?? _asDouble(call['location']?['longitude']);
+    if (lat == null || lng == null) {
+      return 'Адрес не указан';
+    }
+
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json&addressdetails=1&accept-language=ru',
+      );
+      final response = await http.get(url, headers: {
+        'User-Agent': 'SafeCityGuard/1.0',
+      });
+      if (response.statusCode != 200) return 'Адрес не указан';
+      final data = json.decode(response.body);
+      final address = data['address'];
+
+      final road = address?['road'] ?? address?['street'] ?? '';
+      final house = address?['house_number'] ?? '';
+      if (road is String && road.isNotEmpty) {
+        var label = road;
+        if (house is String && house.isNotEmpty) label += ' $house';
+        return label;
+      }
+
+      final display = data['display_name'];
+      if (display is String && display.isNotEmpty) {
+        return display.split(',').take(2).join(', ');
+      }
+    } catch (_) {}
+
+    return 'Адрес не указан';
+  }
+
+  Future<String> _addressFutureForCall(Map<String, dynamic> call) {
+    final key = call['id']?.toString() ??
+        '${call['latitude']}_${call['longitude']}_${call['location']?['latitude']}_${call['location']?['longitude']}';
+    return _callAddressFutureCache.putIfAbsent(key, () => _resolveCallAddress(call));
   }
 
   void _zoomBy(double delta) {
@@ -337,8 +395,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               const SizedBox(height: 24),
 
               // ─── Calls Section ───
-              const Text(
-                'Доступные вызовы:',
+              Text(
+                callState.activeCall != null ? 'Активный вызов:' : 'Доступные вызовы:',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
@@ -364,14 +422,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 )
               else ...[
-                // Show active call first if it exists
                 if (callState.activeCall != null)
-                  _buildCallCard(callState.activeCall!, isActive: true),
-
-                // Show available calls
-                if (callState.availableCalls.isNotEmpty)
-                  ...callState.availableCalls.map((c) => _buildCallCard(c, isActive: false))
-                else if (callState.activeCall == null)
+                  _buildCallCard(callState.activeCall!, isActive: true)
+                else if (callState.availableCalls.isNotEmpty)
+                  ...callState.availableCalls
+                      .map((c) => _buildCallCard(c, isActive: false))
+                else
                   _buildEmptyCallsState(),
               ],
 
@@ -427,11 +483,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   // ─── Call Card (from API) ───
   Widget _buildCallCard(Map<String, dynamic> call, {bool isActive = false}) {
     final name = call['caller']?['name'] ?? 'Неизвестный';
-    final address = (call['address'] as String?) ??
-        (call['location']?['address'] as String?) ??
-        (call['latitude'] != null && call['longitude'] != null
-            ? '${call['latitude']}, ${call['longitude']}'
-            : 'Нет адреса');
     final callId = call['id'].toString();
 
     return Container(
@@ -519,12 +570,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      address,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
+                    FutureBuilder<String>(
+                      future: _addressFutureForCall(call),
+                      builder: (context, snapshot) {
+                        return Text(
+                          snapshot.data ?? 'Определение адреса...',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
