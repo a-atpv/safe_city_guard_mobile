@@ -204,7 +204,9 @@ class IncidentDetailScreen extends ConsumerWidget {
                     // Info rows
                     _buildInfoRow(Icons.category_outlined, 'Тип', call['type'] ?? 'ЧС'),
                     _buildInfoRow(
-                        Icons.location_on_outlined, 'Адрес', call['address'] ?? 'Координаты: $lat, $lng'),
+                        Icons.location_on_outlined,
+                        'Адрес',
+                        call['address'] ?? call['location']?['address'] ?? 'Адрес не указан'),
                     _buildInfoRow(
                         Icons.access_time, 'Время', call['created_at']?.substring(11, 16) ?? ''),
                     _buildInfoRow(

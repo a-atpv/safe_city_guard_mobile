@@ -39,7 +39,8 @@ class ApiClient {
 
       // Use a separate Dio instance for refreshing to avoid interceptor recursion
       final refreshDio = Dio(BaseOptions(
-        baseUrl: ApiConstants.baseUrl,
+        // Guard app refresh token endpoint lives under /guard as well.
+        baseUrl: ApiConstants.guardBaseUrl,
         connectTimeout: const Duration(seconds: 10),
         receiveTimeout: const Duration(seconds: 10),
       ));
@@ -189,6 +190,15 @@ final dio = ApiClient.instance;
 final dioPublic = Dio(
   BaseOptions(
     baseUrl: ApiConstants.baseUrl,
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 10),
+  ),
+);
+
+/// Public Dio for guard auth endpoints (/api/v1/guard/*) without attaching a Bearer token.
+final dioGuardPublic = Dio(
+  BaseOptions(
+    baseUrl: ApiConstants.guardBaseUrl,
     connectTimeout: const Duration(seconds: 10),
     receiveTimeout: const Duration(seconds: 10),
   ),

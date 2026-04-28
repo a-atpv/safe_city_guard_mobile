@@ -74,23 +74,12 @@ class CallController extends Notifier<CallState> {
 
   Future<void> _fetchActiveCall() async {
     try {
-      final calls = await _repository.getAvailableCalls();
-
-      Map<String, dynamic>? active;
-      final List<Map<String, dynamic>> available = [];
-
-      for (final call in calls) {
-        final status = call['status']?.toString().toLowerCase();
-        // Active statuses: accepted, en_route, arrived
-        if (status == 'accepted' ||
-            status == 'en_route' ||
-            status == 'en-route' ||
-            status == 'arrived') {
-          active ??= call; // Take the first active one as THE active call
-        } else {
-          available.add(call);
-        }
-      }
+      final active = await _repository.getActiveCall();
+      final availableAll = await _repository.getAvailableCalls();
+      final activeId = active?['id']?.toString();
+      final available = availableAll
+          .where((c) => c['id']?.toString() != activeId)
+          .toList(growable: false);
 
       state = state.copyWith(
         availableCalls: available,
