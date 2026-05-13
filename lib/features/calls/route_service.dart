@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import '../../core/api_client.dart';
+import '../../core/api_constants.dart';
 import 'route_model.dart';
+
 
 class RouteService {
   final Dio _dio =
@@ -13,7 +15,8 @@ class RouteService {
     bool withSteps = false,
   }) async {
     final response = await _dio.get(
-      '/route/call/$callId',
+      ApiConstants.routeToCall(callId),
+
       queryParameters: {'with_steps': withSteps},
     );
     return CallRouteData.fromJson(response.data);
@@ -22,7 +25,8 @@ class RouteService {
   /// Quick ETA only (lightweight, for showing ETA before accepting)
   Future<int> getETA(double destLat, double destLng) async {
     final response = await _dio.get(
-      '/route/eta',
+      ApiConstants.routeEta,
+
       queryParameters: {'dest_lat': destLat, 'dest_lng': destLng},
     );
     return response.data['eta_minutes'] as int;
@@ -37,7 +41,8 @@ class RouteService {
     bool withSteps = false,
   }) async {
     final response = await _dio.post(
-      '/route/calculate',
+      ApiConstants.routeCalculate,
+
       data: {
         'origin_lat': originLat,
         'origin_lng': originLng,

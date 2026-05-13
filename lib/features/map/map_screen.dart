@@ -40,10 +40,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     super.dispose();
   }
 
+  static bool _hasRequestedPermission = false;
+
   Future<void> _determinePosition() async {
     try {
       LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
+      if (permission == LocationPermission.denied && !_hasRequestedPermission) {
+        _hasRequestedPermission = true;
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.deniedForever ||

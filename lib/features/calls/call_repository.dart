@@ -1,12 +1,15 @@
 import 'package:dio/dio.dart';
 import '../../core/api_client.dart';
+import '../../core/api_constants.dart';
+
 
 class CallRepository {
   final Dio _dio = dio;
 
   Future<Map<String, dynamic>?> getActiveCall() async {
     try {
-      final response = await _dio.get('call/active');
+      final response = await _dio.get(ApiConstants.activeCall);
+
       final data = response.data;
       if (data is Map<String, dynamic>) {
         return data;
@@ -25,7 +28,8 @@ class CallRepository {
 
   Future<List<Map<String, dynamic>>> getAvailableCalls() async {
     try {
-      final response = await _dio.get('calls/available');
+      final response = await _dio.get(ApiConstants.availableCalls);
+
       final data = response.data;
       if (data is List) {
         return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
@@ -44,7 +48,8 @@ class CallRepository {
 
   Future<void> acceptCall(String callId) async {
     try {
-      await _dio.post('call/$callId/accept');
+      await _dio.post(ApiConstants.acceptCall(callId));
+
     } on DioException catch (e) {
       throw Exception(ApiClient.extractError(e, 'Failed to accept call'));
     }
@@ -52,7 +57,8 @@ class CallRepository {
 
   Future<void> declineCall(String callId) async {
     try {
-      await _dio.post('call/$callId/decline');
+      await _dio.post(ApiConstants.declineCall(callId));
+
     } on DioException catch (e) {
       throw Exception(ApiClient.extractError(e, 'Failed to decline call'));
     }
@@ -60,7 +66,8 @@ class CallRepository {
 
   Future<void> enRoute(String callId) async {
     try {
-      await _dio.post('call/$callId/en-route');
+      await _dio.post(ApiConstants.enRoute(callId));
+
     } on DioException catch (e) {
       throw Exception(ApiClient.extractError(e, 'Failed to update status to en-route'));
     }
@@ -68,7 +75,8 @@ class CallRepository {
 
   Future<void> arrived(String callId) async {
     try {
-      await _dio.post('call/$callId/arrived');
+      await _dio.post(ApiConstants.arrived(callId));
+
     } on DioException catch (e) {
       throw Exception(ApiClient.extractError(e, 'Failed to update status to arrived'));
     }
@@ -76,7 +84,8 @@ class CallRepository {
 
   Future<void> complete(String callId) async {
     try {
-      await _dio.post('call/$callId/complete');
+      await _dio.post(ApiConstants.completeCall(callId));
+
     } on DioException catch (e) {
       throw Exception(ApiClient.extractError(e, 'Failed to complete call'));
     }
@@ -84,7 +93,8 @@ class CallRepository {
 
   Future<void> report(String callId, String category, String text) async {
     try {
-      await _dio.post('call/$callId/report', data: {
+      await _dio.post(ApiConstants.callReport(callId), data: {
+
         'category': category,
         'report_text': text,
       });
@@ -95,7 +105,8 @@ class CallRepository {
 
   Future<void> sendMessage(String callId, String text) async {
     try {
-      await _dio.post('call/$callId/message', data: {
+      await _dio.post(ApiConstants.sendMessage(callId), data: {
+
         'message': text,
       });
     } on DioException catch (e) {
@@ -105,7 +116,8 @@ class CallRepository {
 
   Future<Map<String, dynamic>> getMessages(String callId) async {
     try {
-      final response = await _dio.get('call/$callId/messages');
+      final response = await _dio.get(ApiConstants.callMessages(callId));
+
       return response.data;
     } on DioException catch (e) {
       throw Exception(ApiClient.extractError(e, 'Failed to fetch messages'));
@@ -125,7 +137,8 @@ class CallRepository {
       if (statusFilter != null) {
         queryParams['status_filter'] = statusFilter;
       }
-      final response = await _dio.get('history', queryParameters: queryParams);
+      final response = await _dio.get(ApiConstants.callHistory, queryParameters: queryParams);
+
       return response.data;
     } on DioException catch (e) {
       throw Exception(ApiClient.extractError(e, 'Failed to fetch call history'));

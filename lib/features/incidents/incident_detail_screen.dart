@@ -7,12 +7,12 @@ import '../../core/app_colors.dart';
 import '../calls/call_controller.dart';
 
 class IncidentDetailScreen extends ConsumerWidget {
-  const IncidentDetailScreen({super.key});
+  final Map<String, dynamic>? callData;
+  const IncidentDetailScreen({super.key, this.callData});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final callState = ref.watch(callControllerProvider);
-    final call = callState.activeCall;
+    final call = callData;
 
     if (call == null) {
       return Scaffold(

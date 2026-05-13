@@ -259,7 +259,12 @@ class CallOfferSheet extends ConsumerWidget {
         
         // Navigate to active call screen
         final int id = callId is int ? callId : int.tryParse(callId.toString()) ?? 0;
-        context.push('/active-call', extra: id);
+        final currentRoute = GoRouterState.of(context).uri.toString();
+        if (currentRoute == '/active-call') {
+          context.pushReplacement('/active-call', extra: id);
+        } else {
+          context.push('/active-call', extra: id);
+        }
       }
     } catch (e) {
       if (context.mounted) {

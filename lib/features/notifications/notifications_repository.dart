@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../core/api_client.dart';
+import '../../core/api_constants.dart';
+
 import '../../core/token_storage.dart';
 
 class NotificationsRepository {
@@ -13,7 +15,8 @@ class NotificationsRepository {
     try {
       final token = await TokenStorage().getAccessToken();
       final response = await _dio.get(
-        'notifications',
+        ApiConstants.notifications,
+
         queryParameters: {'limit': limit, 'offset': offset},
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
@@ -27,7 +30,8 @@ class NotificationsRepository {
     try {
       final token = await TokenStorage().getAccessToken();
       await _dio.patch(
-        'notifications/$notificationId/read',
+        ApiConstants.readNotification(notificationId),
+
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
     } on DioException catch (e) {
@@ -39,7 +43,8 @@ class NotificationsRepository {
     try {
       final token = await TokenStorage().getAccessToken();
       await _dio.post(
-        'notifications/read-all',
+        ApiConstants.readAllNotifications,
+
         options: Options(headers: {'Authorization': 'Bearer $token'}),
       );
     } on DioException catch (e) {

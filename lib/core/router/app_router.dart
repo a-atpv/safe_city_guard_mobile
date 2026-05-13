@@ -38,7 +38,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/home', builder: (context, state) => const HomeScreen()),
       GoRoute(
         path: '/incident-detail',
-        builder: (context, state) => const IncidentDetailScreen(),
+        builder: (context, state) {
+          final callData = state.extra as Map<String, dynamic>?;
+          return IncidentDetailScreen(callData: callData);
+        },
       ),
       GoRoute(
         path: '/call-report',

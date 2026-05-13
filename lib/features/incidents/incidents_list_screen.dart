@@ -113,7 +113,7 @@ class IncidentsListScreen extends ConsumerWidget {
                         final call = calls[index] as Map<String, dynamic>;
                         return _IncidentCard(
                           call: call,
-                          onTap: () => context.push('/incident-detail'),
+                          onTap: () => context.push('/incident-detail', extra: call),
                         );
                       },
                     ),

@@ -45,6 +45,14 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
   }
 
   @override
+  void didUpdateWidget(ActiveCallScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.callId != widget.callId) {
+      _loadRoute();
+    }
+  }
+
+  @override
   void dispose() {
     _refreshTimer?.cancel();
     _elapsedTimer?.cancel();
