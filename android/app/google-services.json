@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "835753769209",
+    "project_id": "safe-city-82a57",
+    "storage_bucket": "safe-city-82a57.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:835753769209:android:6e4a9a8f8b443e23508a28",
+        "android_client_info": {
+          "package_name": "com.safeCity.appname"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFNCHu9stAA7hkIx-42xat1t22_ILYL7g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:835753769209:android:8e3bdf117199bc9c508a28",
+        "android_client_info": {
+          "package_name": "com.safeCityGuard.appname"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFNCHu9stAA7hkIx-42xat1t22_ILYL7g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
