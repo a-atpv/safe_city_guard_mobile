@@ -224,8 +224,45 @@ class PushNotificationService {
     }
   }
 
+  void Function(String status, int callId)? onTerminalStatusReceived;
+  Map<String, dynamic>? _pendingTerminalEvent;
+
+  void setOnTerminalStatusReceived(void Function(String status, int callId) callback) {
+    onTerminalStatusReceived = callback;
+    if (_pendingTerminalEvent != null) {
+      final status = _pendingTerminalEvent!['status'] as String;
+      final callId = _pendingTerminalEvent!['callId'] as int;
+      _pendingTerminalEvent = null;
+      Future.delayed(const Duration(milliseconds: 500), () {
+        callback(status, callId);
+      });
+    }
+  }
+
   void _handleNotificationPayload(Map<String, dynamic> data) {
     log('Handling notification payload: $data');
+    
+    final status = data['status']?.toString();
+    final callIdStr = data['call_id']?.toString();
+    
+    if (status != null && callIdStr != null) {
+      final statusLower = status.toLowerCase();
+      if (statusLower == 'completed' ||
+          statusLower == 'cancelled_by_user' ||
+          statusLower == 'cancelled_by_system') {
+        final callId = int.tryParse(callIdStr) ?? 0;
+        
+        if (onTerminalStatusReceived != null) {
+          onTerminalStatusReceived!(statusLower, callId);
+        } else {
+          _pendingTerminalEvent = {
+            'status': statusLower,
+            'callId': callId,
+          };
+        }
+        return;
+      }
+    }
     
     // Use a microtask or future to allow the current frame to complete
     // and wait for the navigator context if it's not yet ready

@@ -135,6 +135,12 @@ class CallController extends Notifier<CallState> {
     state = state.copyWith(error: null);
   }
 
+  void clearActiveCall() {
+    state = state.copyWith(
+      activeCall: () => null,
+    );
+  }
+
   Future<void> sendReport(String callId, String category, String text) async {
     try {
       await _repository.report(callId, category, text);

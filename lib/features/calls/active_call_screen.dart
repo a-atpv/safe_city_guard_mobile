@@ -8,6 +8,7 @@ import 'route_model.dart';
 import 'route_service.dart';
 import 'call_repository.dart';
 import 'call_controller.dart';
+import '../../core/websocket/websocket_service.dart';
 
 class ActiveCallScreen extends ConsumerStatefulWidget {
   final int callId;
@@ -28,6 +29,10 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
   final RouteService _routeService = RouteService();
   final CallRepository _callRepo = CallRepository();
 
+  // Live user position received via WebSocket
+  LatLng? _liveUserPos;
+  StreamSubscription<Map<String, dynamic>>? _wsSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +46,18 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
     // Elapsed timer (the "02:34" counter in your UI)
     _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() => _elapsed += const Duration(seconds: 1));
+    });
+
+    // Listen for real-time user location updates from the backend
+    _wsSubscription = webSocketServiceProvider.messageStream.listen((msg) {
+      if (msg['type'] == 'user_location_update' &&
+          msg['call_id'] == widget.callId) {
+        final lat = (msg['latitude'] as num?)?.toDouble();
+        final lng = (msg['longitude'] as num?)?.toDouble();
+        if (lat != null && lng != null && mounted) {
+          setState(() => _liveUserPos = LatLng(lat, lng));
+        }
+      }
     });
   }
 
@@ -56,6 +73,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
   void dispose() {
     _refreshTimer?.cancel();
     _elapsedTimer?.cancel();
+    _wsSubscription?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -219,7 +237,8 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
     List<LatLng> polylinePoints = [];
 
     if (route != null) {
-      userPos = LatLng(route.userLatitude, route.userLongitude);
+      // Prefer live WS position; fall back to the last fetched route coordinates
+      userPos = _liveUserPos ?? LatLng(route.userLatitude, route.userLongitude);
       guardPos = route.guardLatitude != null && route.guardLongitude != null
           ? LatLng(route.guardLatitude!, route.guardLongitude!)
           : null;
