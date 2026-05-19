@@ -38,8 +38,8 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
     super.initState();
     _loadRoute();
 
-    // Refresh route every 30 seconds (guard is moving)
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    // Refresh route every 15 seconds (guard is moving)
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       _loadRoute();
     });
 
