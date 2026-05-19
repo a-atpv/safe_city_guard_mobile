@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_colors.dart';
 import '../home/shift_controller.dart';
 import '../calls/call_controller.dart';
@@ -485,7 +486,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   // ─── Call Card (from API) ───
   Widget _buildCallCard(Map<String, dynamic> call, {bool isActive = false}) {
-    final name = call['caller']?['name'] ?? 'Неизвестный';
+    final name = call['user']?['full_name'] ?? call['caller']?['name'] ?? 'Неизвестный';
     final callId = call['id'].toString();
 
     return Container(
@@ -594,7 +595,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(
-                  onPressed: () {},
+                  onPressed: () async {
+                    final phone = call['user']?['phone'];
+                    if (phone != null && phone.isNotEmpty) {
+                      final uri = Uri.parse('tel:$phone');
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      } else {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Не удалось набрать номер')),
+                          );
+                        }
+                      }
+                    } else {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Номер пользователя не указан')),
+                        );
+                      }
+                    }
+                  },
                   icon: const Icon(Icons.phone, color: AppColors.info, size: 22),
                   constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                 ),

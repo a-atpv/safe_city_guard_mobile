@@ -289,29 +289,7 @@ class IncidentDetailScreen extends ConsumerWidget {
                           ),
                         ],
                       ),
-                    ] else if (status == 'accepted') ...[
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            ref.read(callControllerProvider.notifier).updateStatus(callId, 'en-route');
-                          },
-                          child: const Text('В пути'),
-                        ),
-                      ),
-                    ] else if (status == 'en-route') ...[
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            ref.read(callControllerProvider.notifier).updateStatus(callId, 'arrived');
-                          },
-                          child: const Text('Прибыл'),
-                        ),
-                      ),
-                    ] else if (status == 'arrived') ...[
+                    ] else if (status == 'accepted' || status == 'en-route' || status == 'en_route' || status == 'arrived') ...[
                       Row(
                         children: [
                           Expanded(

@@ -4,10 +4,12 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'route_model.dart';
 import 'route_service.dart';
 import 'call_repository.dart';
 import 'call_controller.dart';
+import 'call_offer_listener.dart';
 import '../../core/websocket/websocket_service.dart';
 
 class ActiveCallScreen extends ConsumerStatefulWidget {
@@ -82,6 +84,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
     try {
       final data = await _routeService.getRouteToCall(widget.callId);
       if (mounted) {
+        final isFirstLoad = _callRoute == null;
         setState(() {
           _callRoute = data;
           _isLoading = false;
@@ -91,6 +94,33 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
         if (data.route == null && !_hasAutoRedirected) {
           _hasAutoRedirected = true;
           context.push('/call-chat', extra: widget.callId.toString());
+        }
+
+        // On first load, fit the camera bounds if we have points
+        if (isFirstLoad && data.route != null) {
+          final allPoints = <LatLng>[];
+          if (data.guardLatitude != null && data.guardLongitude != null) {
+            allPoints.add(LatLng(data.guardLatitude!, data.guardLongitude!));
+          }
+          allPoints.add(LatLng(data.userLatitude, data.userLongitude));
+          if (data.route != null) {
+            allPoints.addAll(data.route!.coordinates.map((c) => LatLng(c[0], c[1])));
+          }
+
+          if (allPoints.length >= 2) {
+            final bounds = LatLngBounds.fromPoints(allPoints);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _mapController.fitCamera(
+                  CameraFit.bounds(
+                    bounds: bounds,
+                    padding: const EdgeInsets.only(top: 80, bottom: 280, left: 50, right: 50),
+                    maxZoom: 16.5,
+                  ),
+                );
+              }
+            });
+          }
         }
       }
     } catch (e) {
@@ -120,7 +150,9 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
           break;
         case 'complete':
           await _callRepo.complete(idStr);
-          if (mounted) Navigator.pop(context);
+          if (mounted) {
+            ref.read(callOfferListenerProvider).handleTerminalStatus('completed', widget.callId);
+          }
           return;
       }
       await _loadRoute(); // Re-fetch the route to update status
@@ -263,7 +295,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
       mapController: _mapController,
       options: MapOptions(
         initialCenter: userPos,
-        initialZoom: 14,
+        initialZoom: 16.5,
         interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
         backgroundColor: const Color(0xFF1A1A2E),
         onMapReady: () {
@@ -272,7 +304,8 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
             _mapController.fitCamera(
               CameraFit.bounds(
                 bounds: bounds,
-                padding: const EdgeInsets.all(80),
+                padding: const EdgeInsets.only(top: 80, bottom: 280, left: 50, right: 50),
+                maxZoom: 16.5,
               ),
             );
           }
@@ -367,13 +400,12 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
     final route = _callRoute;
     final address = route?.userAddress ?? fallback?['address'] ?? 'Адрес не определен';
     final status = route?.callStatus ?? fallback?['status'] ?? 'pending';
-    final guardName = route?.guardName ?? 'Охранник';
-    // final callerName = fallback?['caller']?['name'] ?? 'Пользователь';
-
+    final callerName = route?.userName ?? fallback?['user']?['full_name'] ?? 'Пользователь';
+ 
     final elapsed =
         '${_elapsed.inMinutes.toString().padLeft(2, '0')}:'
         '${(_elapsed.inSeconds % 60).toString().padLeft(2, '0')}';
-
+ 
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFF1E1E32),
@@ -393,7 +425,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-
+ 
           // ── Status row ──
           Row(
             children: [
@@ -426,20 +458,23 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
             ],
           ),
           const SizedBox(height: 16),
-
-          // ── Guard info row (showing Guard name) ──
+ 
+          // ── Caller info row ──
           Row(
             children: [
               // Avatar
               CircleAvatar(
                 radius: 20,
                 backgroundColor: Colors.blueGrey,
-                child: Text(guardName[0].toUpperCase(), style: const TextStyle(color: Colors.white)),
+                child: Text(
+                  callerName.isNotEmpty ? callerName[0].toUpperCase() : 'П',
+                  style: const TextStyle(color: Colors.white),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  guardName,
+                  callerName,
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 15,
@@ -461,7 +496,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
               ),
               const SizedBox(width: 8),
               
-              // Call button (placeholder)
+              // Call button
               Container(
                 decoration: BoxDecoration(
                   color: Colors.green.withValues(alpha: 0.15),
@@ -469,7 +504,27 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
                 ),
                 child: IconButton(
                   icon: const Icon(Icons.phone, color: Colors.green),
-                  onPressed: () {},
+                  onPressed: () async {
+                    final phone = route?.userPhone ?? fallback?['user']?['phone'];
+                    if (phone != null && phone.isNotEmpty) {
+                      final uri = Uri.parse('tel:$phone');
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      } else {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Не удалось набрать номер')),
+                          );
+                        }
+                      }
+                    } else {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Номер пользователя не указан')),
+                        );
+                      }
+                    }
+                  },
                 ),
               ),
             ],
@@ -501,21 +556,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
           const SizedBox(height: 20),
 
           // ── Action Buttons ──
-          if (status == 'accepted')
-            _buildActionButton(
-              'Выехать (En Route)',
-              const Color(0xFF4A90FF),
-              false,
-              () => _handleStatusAction('en_route'),
-            ),
-          if (status == 'en-route' || status == 'en_route')
-            _buildActionButton(
-              'На месте (Arrived)',
-              Colors.orange,
-              false,
-              () => _handleStatusAction('arrived'),
-            ),
-          if (status == 'arrived')
+          if (status == 'accepted' || status == 'en-route' || status == 'en_route' || status == 'arrived')
             _buildActionButton(
               'Завершить вызов',
               Colors.green,

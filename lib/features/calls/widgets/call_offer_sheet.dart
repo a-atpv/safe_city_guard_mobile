@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:ui';
 import '../call_repository.dart';
+import '../call_controller.dart';
+import '../../../core/router/app_router.dart';
 
 class CallOfferSheet extends ConsumerWidget {
   final Map<String, dynamic> offer;
@@ -254,17 +256,21 @@ class CallOfferSheet extends ConsumerWidget {
       // Logic to accept call
       final repo = CallRepository();
       await repo.acceptCall(callId.toString());
+
+      // Refresh the call controller state so that the active call is updated locally
+      await ref.read(callControllerProvider.notifier).refresh();
+
       if (context.mounted) {
-        Navigator.pop(context); // Close the bottom sheet
-        
-        // Navigate to active call screen
-        final int id = callId is int ? callId : int.tryParse(callId.toString()) ?? 0;
-        final currentRoute = GoRouterState.of(context).uri.toString();
-        if (currentRoute == '/active-call') {
-          context.pushReplacement('/active-call', extra: id);
-        } else {
-          context.push('/active-call', extra: id);
+        if (ModalRoute.of(context)?.isCurrent ?? false) {
+          Navigator.pop(context); // Close the bottom sheet safely
         }
+      }
+      
+            // Navigate to active call screen using the root context to prevent errors if the sheet was popped
+      final rootContext = rootNavigatorKey.currentContext;
+      if (rootContext != null && rootContext.mounted) {
+        final int id = callId is int ? callId : int.tryParse(callId.toString()) ?? 0;
+        GoRouter.of(rootContext).push('/active-call', extra: id);
       }
     } catch (e) {
       if (context.mounted) {

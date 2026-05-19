@@ -67,36 +67,42 @@ class CallRouteData {
   final double? guardRating;
   final int? guardTotalReviews;
   final String? guardPhone;
-
-  CallRouteData({
-    required this.callId,
-    required this.callStatus,
-    required this.userLatitude,
-    required this.userLongitude,
-    this.userAddress,
-    this.guardLatitude,
-    this.guardLongitude,
-    this.route,
-    this.guardName,
-    this.guardAvatarUrl,
-    this.guardRating,
-    this.guardTotalReviews,
-    this.guardPhone,
-  });
-
-  factory CallRouteData.fromJson(Map<String, dynamic> json) => CallRouteData(
-    callId: json['call_id'],
-    callStatus: json['call_status'],
-    userLatitude: (json['user_latitude'] as num).toDouble(),
-    userLongitude: (json['user_longitude'] as num).toDouble(),
-    userAddress: json['user_address'],
-    guardLatitude: (json['guard_latitude'] as num?)?.toDouble(),
-    guardLongitude: (json['guard_longitude'] as num?)?.toDouble(),
-    route: json['route'] != null ? RouteData.fromJson(json['route']) : null,
-    guardName: json['guard_name'],
-    guardAvatarUrl: json['guard_avatar_url'],
-    guardRating: (json['guard_rating'] as num?)?.toDouble(),
-    guardTotalReviews: json['guard_total_reviews'],
-    guardPhone: json['guard_phone'],
-  );
-}
+  final String? userName;
+  final String? userPhone;
+ 
+   CallRouteData({
+     required this.callId,
+     required this.callStatus,
+     required this.userLatitude,
+     required this.userLongitude,
+     this.userAddress,
+     this.guardLatitude,
+     this.guardLongitude,
+     this.route,
+     this.guardName,
+     this.guardAvatarUrl,
+     this.guardRating,
+     this.guardTotalReviews,
+     this.guardPhone,
+     this.userName,
+     this.userPhone,
+   });
+ 
+   factory CallRouteData.fromJson(Map<String, dynamic> json) => CallRouteData(
+     callId: json['call_id'],
+     callStatus: json['call_status'],
+     userLatitude: (json['user_latitude'] as num).toDouble(),
+     userLongitude: (json['user_longitude'] as num).toDouble(),
+     userAddress: json['user_address'],
+     guardLatitude: (json['guard_latitude'] as num?)?.toDouble(),
+     guardLongitude: (json['guard_longitude'] as num?)?.toDouble(),
+     route: json['route'] != null ? RouteData.fromJson(json['route']) : null,
+     guardName: json['guard_name'],
+     guardAvatarUrl: json['guard_avatar_url'],
+     guardRating: (json['guard_rating'] as num?)?.toDouble(),
+     guardTotalReviews: json['guard_total_reviews'],
+     guardPhone: json['guard_phone'],
+     userName: json['user_name'],
+     userPhone: json['user_phone'],
+   );
+ }

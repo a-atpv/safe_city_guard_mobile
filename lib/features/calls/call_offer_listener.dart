@@ -18,13 +18,14 @@ final callOfferListenerProvider = Provider<CallOfferListener>((ref) {
 class CallOfferListener {
   StreamSubscription? _subscription;
   final Ref _ref;
+  bool _isOfferSheetOpen = false;
 
   CallOfferListener(this._ref) {
     _startListening();
     
     // Register FCM callback for terminal notification taps
     PushNotificationService().setOnTerminalStatusReceived((status, callId) {
-      _handleTerminalStatus(status, callId);
+      handleTerminalStatus(status, callId);
     });
   }
 
@@ -48,28 +49,33 @@ class CallOfferListener {
     
     if (status != null && callIdStr != null) {
       final statusLower = status.toLowerCase();
+      
+      // Check if this matches our active call
+      final activeCall = _ref.read(callControllerProvider).activeCall;
+      final activeCallId = activeCall?['id']?.toString();
+      final isOurActiveCall = activeCallId != null && activeCallId == callIdStr;
+
       if (statusLower == 'completed' ||
           statusLower == 'cancelled_by_user' ||
           statusLower == 'cancelled_by_system') {
         final callId = int.tryParse(callIdStr) ?? 0;
         
-        // Check if this matches our active call
-        final activeCall = _ref.read(callControllerProvider).activeCall;
-        final activeCallId = activeCall?['id']?.toString();
-        
-        if (activeCallId != null && activeCallId == callIdStr) {
+        if (isOurActiveCall) {
           debugPrint('CallOfferListener: Terminal status update received for active call: $status');
-          _handleTerminalStatus(statusLower, callId);
+          handleTerminalStatus(statusLower, callId);
           return;
         }
       }
-    }
 
-    final statusVal = message['status'];
-    // Original behavior for non-terminal status updates:
-    if (statusVal != 'pending' && statusVal != 'offered') {
-      debugPrint('CallOfferListener: Call status updated to $statusVal, closing offer if open');
-      _closeOfferSheet();
+      // Original behavior for non-terminal status updates:
+      if (statusLower != 'pending' && statusLower != 'offered') {
+        if (isOurActiveCall) {
+          debugPrint('CallOfferListener: Non-terminal status update for our active call: $statusLower. Ignoring to prevent incorrect pop.');
+          return;
+        }
+        debugPrint('CallOfferListener: Call status updated to $statusLower, closing offer if open');
+        _closeOfferSheet();
+      }
     }
   }
 
@@ -80,9 +86,11 @@ class CallOfferListener {
 
   void _closeOfferSheet() {
     SOSAlertManager.stopAlert();
+    if (!_isOfferSheetOpen) return;
     final context = rootNavigatorKey.currentContext;
     if (context != null && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
+      _isOfferSheetOpen = false;
     }
   }
 
@@ -95,6 +103,7 @@ class CallOfferListener {
     // Show Bottom Sheet using the root navigator key
     final context = rootNavigatorKey.currentContext;
     if (context != null) {
+      _isOfferSheetOpen = true;
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -103,6 +112,7 @@ class CallOfferListener {
         isDismissible: false, // Force reaction to SOS
         builder: (context) => CallOfferSheet(offer: offer),
       ).then((_) {
+        _isOfferSheetOpen = false;
         // Stop alert when sheet is closed (accepted or declined)
         SOSAlertManager.stopAlert();
       });
@@ -111,7 +121,7 @@ class CallOfferListener {
     }
   }
 
-  void _handleTerminalStatus(String status, int callId) async {
+  void handleTerminalStatus(String status, int callId) async {
     debugPrint('CallOfferListener: Handling terminal status $status for call $callId');
     
     // 1. Stop alert/siren sounds and vibration
@@ -125,14 +135,12 @@ class CallOfferListener {
     
     // 4. Update shift status to ensure the guard is marked ready/online
     _ref.read(shiftControllerProvider.notifier).checkCurrentShift();
-
+ 
     // 5. Navigate back to map screen and show dialog
     final context = rootNavigatorKey.currentContext;
     if (context != null) {
-      // Pop all overlays/dialogs/sheets
-      while (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
+      // Pop all overlays/dialogs/sheets (only PopupRoutes, keeping PageRoutes intact)
+      Navigator.of(context).popUntil((route) => route is PageRoute);
       
       // Navigate to /home
       GoRouter.of(context).go('/home');
