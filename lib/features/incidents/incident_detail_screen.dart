@@ -6,13 +6,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_colors.dart';
 import '../calls/call_controller.dart';
 
-class IncidentDetailScreen extends ConsumerWidget {
+class IncidentDetailScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? callData;
   const IncidentDetailScreen({super.key, this.callData});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final call = callData;
+  ConsumerState<IncidentDetailScreen> createState() => _IncidentDetailScreenState();
+}
+
+class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
+  bool _isAccepting = false;
+  bool _isDeclining = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final call = widget.callData;
 
     if (call == null) {
       return Scaffold(
@@ -258,20 +266,50 @@ class IncidentDetailScreen extends ConsumerWidget {
                             child: SizedBox(
                               height: 50,
                               child: OutlinedButton(
-                                onPressed: () {
-                                  ref.read(callControllerProvider.notifier).declineCall(callId);
-                                  context.pop();
-                                },
+                                onPressed: (_isAccepting || _isDeclining)
+                                    ? null
+                                    : () async {
+                                        setState(() {
+                                          _isDeclining = true;
+                                        });
+                                        try {
+                                          await ref.read(callControllerProvider.notifier).declineCall(callId);
+                                          if (context.mounted) {
+                                            context.pop();
+                                          }
+                                        } catch (e) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Ошибка при отклонении вызова: $e')),
+                                            );
+                                          }
+                                        } finally {
+                                          if (mounted) {
+                                            setState(() {
+                                              _isDeclining = false;
+                                            });
+                                          }
+                                        }
+                                      },
                                 style: OutlinedButton.styleFrom(
                                   side: const BorderSide(
                                       color: AppColors.danger, width: 1.5),
                                   shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12)),
                                 ),
-                                child: const Text(
-                                  'Отклонить',
-                                  style: TextStyle(color: AppColors.danger),
-                                ),
+                                child: _isDeclining
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: AppColors.danger,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Text(
+                                        'Отклонить',
+                                        style: TextStyle(color: AppColors.danger),
+                                      ),
                               ),
                             ),
                           ),
@@ -280,10 +318,38 @@ class IncidentDetailScreen extends ConsumerWidget {
                             child: SizedBox(
                               height: 50,
                               child: ElevatedButton(
-                                onPressed: () {
-                                  ref.read(callControllerProvider.notifier).acceptCall(callId);
-                                },
-                                child: const Text('Принять'),
+                                onPressed: (_isAccepting || _isDeclining)
+                                    ? null
+                                    : () async {
+                                        setState(() {
+                                          _isAccepting = true;
+                                        });
+                                        try {
+                                          await ref.read(callControllerProvider.notifier).acceptCall(callId);
+                                        } catch (e) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(content: Text('Ошибка при принятии вызова: $e')),
+                                            );
+                                          }
+                                        } finally {
+                                          if (mounted) {
+                                            setState(() {
+                                              _isAccepting = false;
+                                            });
+                                          }
+                                        }
+                                      },
+                                child: _isAccepting
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Text('Принять'),
                               ),
                             ),
                           ),

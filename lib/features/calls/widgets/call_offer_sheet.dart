@@ -6,18 +6,44 @@ import '../call_repository.dart';
 import '../call_controller.dart';
 import '../../../core/router/app_router.dart';
 
-class CallOfferSheet extends ConsumerWidget {
+class CallOfferSheet extends ConsumerStatefulWidget {
   final Map<String, dynamic> offer;
 
   const CallOfferSheet({super.key, required this.offer});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final user = offer['user'] ?? {};
-    final callId = offer['call_id'];
-    final address = offer['address'] ?? 'Unknown location';
-    final distance = offer['distance_km'] ?? 0.0;
-    final eta = offer['eta_minutes'] ?? 0;
+  ConsumerState<CallOfferSheet> createState() => _CallOfferSheetState();
+}
+
+class _CallOfferSheetState extends ConsumerState<CallOfferSheet> {
+  bool _isAccepting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = widget.offer['user'] ?? {};
+    final callId = widget.offer['call_id'];
+    
+    var address = widget.offer['address'] as String?;
+    if (address == null || address.trim().isEmpty || address == 'Unknown location' || address == 'Адрес не определен') {
+      final lat = widget.offer['latitude'];
+      final lng = widget.offer['longitude'];
+      if (lat != null && lng != null) {
+        address = '${lat is num ? lat.toStringAsFixed(6) : lat}, ${lng is num ? lng.toStringAsFixed(6) : lng}';
+      } else {
+        address = 'Адрес не определен';
+      }
+    }
+
+    var fullName = user['full_name'] as String?;
+    if (fullName == null || fullName.trim().isEmpty || fullName == 'Пользователь') {
+      fullName = user['phone'] as String?;
+      if (fullName == null || fullName.trim().isEmpty) {
+        fullName = 'Анонимный пользователь';
+      }
+    }
+
+    final distance = widget.offer['distance_km'] ?? 0.0;
+    final eta = widget.offer['eta_minutes'] ?? 0;
 
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -104,7 +130,7 @@ class CallOfferSheet extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            user['full_name'] ?? 'Анонимный пользователь',
+                            fullName,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 18,
@@ -164,7 +190,7 @@ class CallOfferSheet extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: _isAccepting ? null : () => Navigator.pop(context),
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -181,7 +207,7 @@ class CallOfferSheet extends ConsumerWidget {
                   const SizedBox(width: 16),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () => _acceptCall(context, ref, callId),
+                      onPressed: _isAccepting ? null : () => _acceptCall(context, callId),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.redAccent,
                         foregroundColor: Colors.white,
@@ -192,13 +218,22 @@ class CallOfferSheet extends ConsumerWidget {
                         elevation: 8,
                         shadowColor: Colors.redAccent.withValues(alpha: 0.5),
                       ),
-                      child: const Text(
-                        'Принять SOS',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: _isAccepting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text(
+                              'Принять SOS',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                     ),
                   ),
                 ],
@@ -251,9 +286,13 @@ class CallOfferSheet extends ConsumerWidget {
     );
   }
 
-  Future<void> _acceptCall(BuildContext context, WidgetRef ref, dynamic callId) async {
+  Future<void> _acceptCall(BuildContext context, dynamic callId) async {
+    if (_isAccepting) return;
+    setState(() {
+      _isAccepting = true;
+    });
+
     try {
-      // Logic to accept call
       final repo = CallRepository();
       await repo.acceptCall(callId.toString());
 
@@ -266,17 +305,23 @@ class CallOfferSheet extends ConsumerWidget {
         }
       }
       
-            // Navigate to active call screen using the root context to prevent errors if the sheet was popped
+      // Navigate to active call screen using the root context to prevent errors if the sheet was popped
       final rootContext = rootNavigatorKey.currentContext;
       if (rootContext != null && rootContext.mounted) {
         final int id = callId is int ? callId : int.tryParse(callId.toString()) ?? 0;
         GoRouter.of(rootContext).push('/active-call', extra: id);
       }
     } catch (e) {
-      if (context.mounted) {
+      if (mounted && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAccepting = false;
+        });
       }
     }
   }

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -34,6 +36,52 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
   // Live user position received via WebSocket
   LatLng? _liveUserPos;
   StreamSubscription<Map<String, dynamic>>? _wsSubscription;
+
+  String? _geocodedAddress;
+  double? _lastGeocodedLat;
+  double? _lastGeocodedLng;
+
+  double? _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  Future<void> _triggerReverseGeocode(double lat, double lng) async {
+    if (_lastGeocodedLat == lat && _lastGeocodedLng == lng) return;
+    _lastGeocodedLat = lat;
+    _lastGeocodedLng = lng;
+
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json&addressdetails=1&accept-language=ru',
+      );
+      final response = await http.get(url, headers: {
+        'User-Agent': 'SafeCityGuard/1.0',
+      });
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final address = data['address'];
+        String label = '';
+        final road = address?['road'] ?? address?['street'] ?? '';
+        final house = address?['house_number'] ?? '';
+        if (road is String && road.isNotEmpty) {
+          label = road;
+          if (house is String && house.isNotEmpty) label += ' $house';
+        } else {
+          final display = data['display_name'];
+          if (display is String && display.isNotEmpty) {
+            label = display.split(',').take(2).join(', ');
+          }
+        }
+        if (mounted && label.isNotEmpty) {
+          setState(() {
+            _geocodedAddress = label;
+          });
+        }
+      }
+    } catch (_) {}
+  }
 
   @override
   void initState() {
@@ -398,9 +446,70 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
   // ─────────────────────────────────────────────
   Widget _buildBottomSheet(Map<String, dynamic>? fallback) {
     final route = _callRoute;
-    final address = route?.userAddress ?? fallback?['address'] ?? 'Адрес не определен';
+    
+    // Resolve caller name with multiple fallbacks
+    String callerName = 'Пользователь';
+    final nameCandidates = [
+      route?.userName?.trim(),
+      (fallback?['user']?['full_name'] as String?)?.trim(),
+      (fallback?['caller']?['name'] as String?)?.trim(),
+    ];
+    for (final c in nameCandidates) {
+      if (c != null && c.isNotEmpty && c != 'Пользователь') {
+        callerName = c;
+        break;
+      }
+    }
+    // If name is still default or empty, try phone number
+    if (callerName == 'Пользователь') {
+      final phoneCandidates = [
+        route?.userPhone?.trim(),
+        (fallback?['user']?['phone'] as String?)?.trim(),
+        (fallback?['caller']?['phone'] as String?)?.trim(),
+      ];
+      for (final p in phoneCandidates) {
+        if (p != null && p.isNotEmpty) {
+          callerName = p;
+          break;
+        }
+      }
+    }
+
+    // Resolve address with multiple fallbacks
+    String address = 'Адрес не определен';
+    final addressCandidates = [
+      route?.userAddress?.trim(),
+      (fallback?['address'] as String?)?.trim(),
+      (fallback?['location']?['address'] as String?)?.trim(),
+    ];
+    for (final a in addressCandidates) {
+      if (a != null && a.isNotEmpty && a != 'Адрес не определен') {
+        address = a;
+        break;
+      }
+    }
+
+    final lat = route?.userLatitude ?? _asDouble(fallback?['latitude']) ?? _asDouble(fallback?['location']?['latitude']);
+    final lng = route?.userLongitude ?? _asDouble(fallback?['longitude']) ?? _asDouble(fallback?['location']?['longitude']);
+
+    if (address == 'Адрес не определен') {
+      if (_geocodedAddress != null && _geocodedAddress!.isNotEmpty) {
+        address = _geocodedAddress!;
+      } else if (lat != null && lng != null) {
+        address = '${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}';
+      }
+    }
+
+    // Trigger async geocoding if address is coordinate-based or not determined
+    if ((address == 'Адрес не определен' || address.contains(',')) && lat != null && lng != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _triggerReverseGeocode(lat, lng);
+        }
+      });
+    }
+
     final status = route?.callStatus ?? fallback?['status'] ?? 'pending';
-    final callerName = route?.userName ?? fallback?['user']?['full_name'] ?? 'Пользователь';
  
     final elapsed =
         '${_elapsed.inMinutes.toString().padLeft(2, '0')}:'

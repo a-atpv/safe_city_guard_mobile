@@ -103,6 +103,7 @@ class CallController extends Notifier<CallState> {
       await _fetchActiveCall();
     } catch (e) {
       state = state.copyWith(error: e.toString().replaceFirst('Exception: ', ''));
+      rethrow;
     }
   }
 

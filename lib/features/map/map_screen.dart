@@ -24,6 +24,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   LatLng _selectedPosition = const LatLng(51.1282, 71.4307);
   String _currentAddress = 'Определение адреса...';
   bool _locationLoaded = false;
+  bool _isAccepting = false;
   final MapController _mapController = MapController();
   Timer? _reverseGeocodeDebounce;
   final Map<String, Future<String>> _callAddressFutureCache = {};
@@ -627,13 +628,33 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             width: double.infinity,
             height: 48,
             child: ElevatedButton(
-              onPressed: () {
-                if (!isActive) {
-                  ref.read(callControllerProvider.notifier).acceptCall(callId);
-                }
-                final int id = int.tryParse(callId) ?? 0;
-                context.push('/active-call', extra: id);
-              },
+              onPressed: _isAccepting
+                  ? null
+                  : () async {
+                      if (!isActive) {
+                        setState(() {
+                          _isAccepting = true;
+                        });
+                        try {
+                          await ref.read(callControllerProvider.notifier).acceptCall(callId);
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Ошибка при принятии вызова: $e')),
+                          );
+                          return;
+                        } finally {
+                          if (mounted) {
+                            setState(() {
+                              _isAccepting = false;
+                            });
+                          }
+                        }
+                      }
+                      if (!mounted) return;
+                      final int id = int.tryParse(callId) ?? 0;
+                      context.push('/active-call', extra: id);
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: isActive ? AppColors.info : AppColors.accent,
                 foregroundColor: Colors.white,
@@ -642,10 +663,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 elevation: 0,
               ),
-              child: Text(
-                isActive ? 'Перейти' : 'Принять',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
+              child: _isAccepting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : Text(
+                      isActive ? 'Перейти' : 'Принять',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
             ),
           ),
         ],
