@@ -45,30 +45,24 @@ class LocationService {
       debugPrint('Error getting initial location: $e');
     }
 
-    // Set up a position stream / timer. For tracking every 15-30 seconds, a stream with distance filter or time interval is good.
-    // iOS and Android support distance filter. To guarantee time updates, we can also just use a timer.
-    // Let's use a Timer to fetch explicit location every 20 seconds.
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 20), (_) async {
-      try {
-        final position = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-          ),
-        );
-        onLocationUpdate(position.latitude, position.longitude);
-      } catch (e) {
-        debugPrint('Error getting periodic location: $e');
-      }
-    });
+    // Continuous stream instead of a fixed 20s timer: emit on every ~10 m of
+    // movement so the guard marker on the dispatcher map / user app moves
+    // smoothly and with minimal delay (each fix is pushed on via WebSocket),
+    // while staying quiet and battery-friendly when the guard is stationary.
+    _positionStream?.cancel();
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10,
+      ),
+    ).listen(
+      (position) => onLocationUpdate(position.latitude, position.longitude),
+      onError: (e) => debugPrint('Error in location stream: $e'),
+    );
   }
-
-  Timer? _timer;
 
   void stopTracking() {
     _positionStream?.cancel();
     _positionStream = null;
-    _timer?.cancel();
-    _timer = null;
   }
 }
