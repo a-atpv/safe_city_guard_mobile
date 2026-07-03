@@ -154,9 +154,20 @@ class _CallChatScreenState extends ConsumerState<CallChatScreen> {
 
   Widget _buildMessageBubble(Map<String, dynamic> msg, bool isMe) {
     final text = msg['message'] ?? msg['text'] ?? '';
-    final timeStr = msg['created_at'] != null 
-        ? msg['created_at'].toString().substring(11, 16)
-        : '';
+    String timeStr = '';
+    if (msg['created_at'] != null) {
+      final str = msg['created_at'].toString();
+      if (str.length >= 16) {
+        timeStr = str.substring(11, 16);
+      } else {
+        try {
+          final dt = DateTime.parse(str);
+          timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        } catch (_) {
+          timeStr = str;
+        }
+      }
+    }
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,

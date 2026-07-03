@@ -137,67 +137,80 @@ class CallOfferListener {
     _ref.read(shiftControllerProvider.notifier).checkCurrentShift();
  
     // 5. Navigate back to map screen and show dialog
-    final context = rootNavigatorKey.currentContext;
-    if (context != null) {
-      // Pop all overlays/dialogs/sheets (only PopupRoutes, keeping PageRoutes intact)
-      Navigator.of(context).popUntil((route) => route is PageRoute);
-      
-      // Navigate to /home
-      GoRouter.of(context).go('/home');
-      
-      // Delay showing the dialog slightly to allow navigation transition to complete
-      await Future.delayed(const Duration(milliseconds: 300));
-      
-      if (context.mounted) {
-        final isCancellation = status == 'cancelled_by_user' || status == 'cancelled_by_system';
-        String messageText = 'Вызов завершен';
-        if (status == 'cancelled_by_user') {
-          messageText = 'Пользователь отменил вызов.';
-        } else if (status == 'cancelled_by_system') {
-          messageText = 'Вызов был отменен системой.';
-        } else if (status == 'completed') {
-          messageText = 'Вызов завершен, отчет отправлен.';
-        }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final context = rootNavigatorKey.currentContext;
+      if (context != null && context.mounted) {
+        // Pop all overlays/dialogs/sheets (only PopupRoutes, keeping PageRoutes intact)
+        Navigator.of(context).popUntil((route) => route is PageRoute);
+        
+        // Navigate to /home
+        GoRouter.of(context).go('/home');
+        
+        // Delay showing the dialog slightly to allow navigation transition to complete
+        await Future.delayed(const Duration(milliseconds: 300));
+        
+        if (context.mounted) {
+          final isCancellation = status == 'cancelled_by_user' || status == 'cancelled_by_system';
+          final isRedirect = status == 'redirected';
+          String messageText = 'Вызов завершен';
+          if (status == 'cancelled_by_user') {
+            messageText = 'Пользователь отменил вызов.';
+          } else if (status == 'cancelled_by_system') {
+            messageText = 'Вызов был отменен системой.';
+          } else if (status == 'completed') {
+            messageText = 'Вызов завершен, отчет отправлен.';
+          } else if (status == 'redirected') {
+            messageText = 'Вызов перенаправлен другой службе.';
+          }
 
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            backgroundColor: AppColors.surface,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
-              children: [
-                Icon(
-                  isCancellation ? Icons.warning_amber_rounded : Icons.check_circle_outline,
-                  color: isCancellation ? AppColors.danger : AppColors.accent,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  isCancellation ? 'Вызов отменен' : 'Вызов завершен',
-                  style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              backgroundColor: AppColors.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(
+                    isCancellation
+                        ? Icons.warning_amber_rounded
+                        : isRedirect
+                            ? Icons.alt_route
+                            : Icons.check_circle_outline,
+                    color: isCancellation ? AppColors.danger : AppColors.accent,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isCancellation
+                        ? 'Вызов отменен'
+                        : isRedirect
+                            ? 'Вызов перенаправлен'
+                            : 'Вызов завершен',
+                    style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              content: Text(
+                messageText,
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    'OK',
+                    style: TextStyle(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
-            content: Text(
-              messageText,
-              style: const TextStyle(color: AppColors.textSecondary),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text(
-                  'OK',
-                  style: TextStyle(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
+          );
+        }
       }
-    }
+    });
   }
 
   void dispose() {

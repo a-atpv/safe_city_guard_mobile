@@ -162,7 +162,8 @@ class _IncidentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final callerName = (call['caller']?['name'] as String?)?.trim();
+    final callerName = (call['caller']?['name'] as String?)?.trim() ??
+                       (call['user']?['full_name'] as String?)?.trim();
     final name = (callerName == null || callerName.isEmpty)
         ? 'Неизвестный'
         : callerName;
@@ -206,7 +207,7 @@ class _IncidentCard extends StatelessWidget {
                   ),
                   child: Center(
                     child: Text(
-                      name[0].toUpperCase(),
+                      name.isNotEmpty ? name[0].toUpperCase() : 'Н',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,

@@ -40,10 +40,20 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
       );
     }
 
-    final lat = call['location']?['latitude'] ?? 51.1282;
-    final lng = call['location']?['longitude'] ?? 71.4307;
+    final latNum = call['latitude'] ?? call['location']?['latitude'];
+    final lat = latNum is num ? latNum.toDouble() : 51.1282;
+    final lngNum = call['longitude'] ?? call['location']?['longitude'];
+    final lng = lngNum is num ? lngNum.toDouble() : 71.4307;
     final status = call['status'] ?? 'pending';
     final callId = call['id'].toString();
+
+    final callerName = (call['caller']?['name'] as String?)?.trim() ?? 
+                       (call['user']?['full_name'] as String?)?.trim() ?? 
+                       'Неизвестный';
+    final callerPhone = (call['caller']?['phone'] as String?)?.trim() ?? 
+                        (call['user']?['phone'] as String?)?.trim() ?? 
+                        'Нет телефона';
+    final avatarChar = callerName.isNotEmpty ? callerName[0].toUpperCase() : 'Н';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -106,7 +116,7 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
                             ),
                             child: Center(
                               child: Text(
-                                (call['caller']?['name'] ?? 'А')[0].toUpperCase(),
+                                avatarChar,
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 22,
@@ -121,7 +131,7 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  call['caller']?['name'] ?? 'Неизвестный',
+                                  callerName,
                                   style: const TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w600,
@@ -130,7 +140,7 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  call['caller']?['phone'] ?? 'Нет телефона',
+                                  callerPhone,
                                   style: const TextStyle(
                                     fontSize: 13,
                                     color: AppColors.textSecondary,
@@ -216,7 +226,12 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
                         'Адрес',
                         call['address'] ?? call['location']?['address'] ?? 'Адрес не указан'),
                     _buildInfoRow(
-                        Icons.access_time, 'Время', call['created_at']?.substring(11, 16) ?? ''),
+                        Icons.access_time, 
+                        'Время', 
+                        (() {
+                          final createdAt = call['created_at']?.toString() ?? '';
+                          return createdAt.length >= 16 ? createdAt.substring(11, 16) : createdAt;
+                        })()),
                     _buildInfoRow(
                         Icons.info_outline, 'Статус', status,
                         valueColor: _getStatusColor(status)),

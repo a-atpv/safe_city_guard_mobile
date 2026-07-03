@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import '../router/app_router.dart';
@@ -283,13 +284,32 @@ class PushNotificationService {
     if (context != null && context.mounted) {
       // If we have a call_id, we might want to go to active-call
       if (data.containsKey('call_id')) {
+        final type = data['type']?.toString();
+        if (type == 'call_offer' || type == 'new_emergency_broadcast') {
+          log('Navigating to /home (Call offer/broadcast notification)');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) {
+              GoRouter.of(context).go('/home');
+            }
+          });
+          return;
+        }
+
         final callIdStr = data['call_id'].toString();
         final callId = int.tryParse(callIdStr) ?? 0;
         log('Navigating to /active-call with callId: $callId');
-        GoRouter.of(context).push('/active-call', extra: callId);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            GoRouter.of(context).push('/active-call', extra: callId);
+          }
+        });
       } else {
         log('Navigating to /home');
-        GoRouter.of(context).go('/home');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            GoRouter.of(context).go('/home');
+          }
+        });
       }
     } else {
       log('ERROR: Could not get context for navigation after waiting.');

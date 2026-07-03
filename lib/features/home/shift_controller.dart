@@ -120,15 +120,18 @@ class ShiftController extends Notifier<ShiftState> with WidgetsBindingObserver {
   }
 
   void _startLocationTracking() {
-    _locationService ??= LocationService(
-      onLocationUpdate: (lat, lng) {
-        _repository.updateLocation(lat, lng);
-      },
+    _locationService ??= LocationService();
+    // Fire-and-forget: the background SDK persists and uploads fixes natively
+    // (even when the app is killed), so we don't block the UI on it — just log
+    // a startup failure.
+    _locationService!.start().catchError(
+      (e) => debugPrint('LocationService.start failed: $e'),
     );
-    _locationService?.startTracking();
   }
 
   void _stopLocationTracking() {
-    _locationService?.stopTracking();
+    _locationService?.stop().catchError(
+      (e) => debugPrint('LocationService.stop failed: $e'),
+    );
   }
 }

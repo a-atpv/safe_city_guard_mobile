@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Required so background tracking auto-resumes after a device reboot (startOnBoot). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:label="safe_city_guard_mobile"
@@ -49,6 +51,13 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="emergency_channel" />
+        <!-- flutter_background_geolocation license key.
+             DEBUG builds run without it; RELEASE (Play Store) builds REQUIRE a
+             valid key from https://www.transistorsoft.com/shop/products/flutter-background-geolocation
+             Paste the purchased key below before shipping a release build. -->
+        <meta-data
+            android:name="com.transistorsoft.locationmanager.license"
+            android:value="YOUR_BACKGROUND_GEOLOCATION_LICENSE_KEY" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

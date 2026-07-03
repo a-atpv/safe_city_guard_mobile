@@ -33,6 +33,7 @@ class ApiConstants {
   static String enRoute(String id) => 'call/$id/en-route';
   static String arrived(String id) => 'call/$id/arrived';
   static String completeCall(String id) => 'call/$id/complete';
+  static String redirectCall(String id) => 'call/$id/redirect';
   static String callReport(String id) => 'call/$id/report';
   static String callMessages(String id) => 'call/$id/messages';
   static String sendMessage(String id) => 'call/$id/message';

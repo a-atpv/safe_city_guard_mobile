@@ -91,6 +91,19 @@ class CallRepository {
     }
   }
 
+  /// Redirect (hand off) an active call to other security services.
+  /// [note] is an optional hand-off comment shown to the next service and user.
+  Future<void> redirect(String callId, {String? note}) async {
+    try {
+      await _dio.post(
+        ApiConstants.redirectCall(callId),
+        data: {if (note != null && note.isNotEmpty) 'note': note},
+      );
+    } on DioException catch (e) {
+      throw Exception(ApiClient.extractError(e, 'Failed to redirect call'));
+    }
+  }
+
   Future<void> report(String callId, String category, String text) async {
     try {
       await _dio.post(ApiConstants.callReport(callId), data: {

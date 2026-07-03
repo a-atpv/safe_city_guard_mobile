@@ -34,6 +34,14 @@
 	<string>This app needs access to location when in the background to track your guard patrol route.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app needs access to location when open to track your guard patrol route.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Motion activity is used to detect when you start/stop moving so location can be tracked efficiently on your shift.</string>
+	<!-- flutter_background_geolocation background-task scheduler identifiers (iOS 13+). -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.transistorsoft.fetch</string>
+		<string>com.transistorsoft.customtask</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -61,6 +69,8 @@
 	<array>
 		<string>location</string>
 		<string>remote-notification</string>
+		<string>fetch</string>
+		<string>processing</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

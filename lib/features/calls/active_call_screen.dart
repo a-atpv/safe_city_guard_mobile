@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +15,7 @@ import 'route_service.dart';
 import 'call_repository.dart';
 import 'call_controller.dart';
 import 'call_offer_listener.dart';
+import '../../core/app_colors.dart';
 import '../../core/websocket/websocket_service.dart';
 
 class ActiveCallScreen extends ConsumerStatefulWidget {
@@ -22,7 +26,8 @@ class ActiveCallScreen extends ConsumerStatefulWidget {
   ConsumerState<ActiveCallScreen> createState() => _ActiveCallScreenState();
 }
 
-class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
+class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
+    with SingleTickerProviderStateMixin {
   CallRouteData? _callRoute;
   bool _isLoading = true;
   Timer? _refreshTimer;
@@ -33,9 +38,16 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
   final RouteService _routeService = RouteService();
   final CallRepository _callRepo = CallRepository();
 
-  // Live user position received via WebSocket
-  LatLng? _liveUserPos;
+  // Real-time positions. `_target*` is the latest known coordinate; `_display*`
+  // is eased toward the target each frame so markers glide instead of jumping.
+  LatLng? _targetUserPos, _displayUserPos;
+  LatLng? _targetGuardPos, _displayGuardPos;
+  Ticker? _ticker;
+  Duration _lastElapsed = Duration.zero;
+  static const Distance _distance = Distance();
+
   StreamSubscription<Map<String, dynamic>>? _wsSubscription;
+  StreamSubscription<Position>? _guardPosSub;
 
   String? _geocodedAddress;
   double? _lastGeocodedLat;
@@ -88,6 +100,13 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
     super.initState();
     _loadRoute();
 
+    // Proactively refresh the call controller to sync the local state with the backend
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(callControllerProvider.notifier).refresh();
+      }
+    });
+
     // Refresh route every 15 seconds (guard is moving)
     _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       _loadRoute();
@@ -98,17 +117,31 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
       setState(() => _elapsed += const Duration(seconds: 1));
     });
 
-    // Listen for real-time user location updates from the backend
+    // Live user position pushed from the backend over WebSocket.
     _wsSubscription = webSocketServiceProvider.messageStream.listen((msg) {
       if (msg['type'] == 'user_location_update' &&
           msg['call_id'] == widget.callId) {
         final lat = (msg['latitude'] as num?)?.toDouble();
         final lng = (msg['longitude'] as num?)?.toDouble();
         if (lat != null && lng != null && mounted) {
-          setState(() => _liveUserPos = LatLng(lat, lng));
+          _setUserTarget(LatLng(lat, lng));
         }
       }
     });
+
+    // Guard's own position straight from the device GPS — instant and smooth,
+    // with no server round-trip (the route only refreshes the blue dot every 15s).
+    _guardPosSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      ),
+    ).listen(
+      (pos) {
+        if (mounted) _setGuardTarget(LatLng(pos.latitude, pos.longitude));
+      },
+      onError: (_) {},
+    );
   }
 
   @override
@@ -124,8 +157,67 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
     _refreshTimer?.cancel();
     _elapsedTimer?.cancel();
     _wsSubscription?.cancel();
+    _guardPosSub?.cancel();
+    _ticker?.dispose();
     _mapController.dispose();
     super.dispose();
+  }
+
+  // ── Smooth marker movement (each frame eases the display toward the target) ──
+  void _setUserTarget(LatLng p) {
+    _targetUserPos = p;
+    _displayUserPos ??= p; // first fix: snap into place
+    _startTicker();
+  }
+
+  void _setGuardTarget(LatLng p) {
+    _targetGuardPos = p;
+    _displayGuardPos ??= p;
+    _startTicker();
+  }
+
+  void _startTicker() {
+    _ticker ??= createTicker(_onTick);
+    if (!_ticker!.isActive) {
+      _lastElapsed = Duration.zero;
+      _ticker!.start();
+    }
+  }
+
+  void _onTick(Duration elapsed) {
+    final dt = (elapsed - _lastElapsed).inMicroseconds / 1e6;
+    _lastElapsed = elapsed;
+    if (dt <= 0) return;
+    // Exponential smoothing toward the target (tau ≈ 0.5s).
+    final k = 1 - math.exp(-dt / 0.5);
+    var moving = false;
+
+    if (_displayUserPos != null && _targetUserPos != null) {
+      if (_distance(_displayUserPos!, _targetUserPos!) > 0.5) {
+        _displayUserPos = _lerpLatLng(_displayUserPos!, _targetUserPos!, k);
+        moving = true;
+      } else {
+        _displayUserPos = _targetUserPos;
+      }
+    }
+    if (_displayGuardPos != null && _targetGuardPos != null) {
+      if (_distance(_displayGuardPos!, _targetGuardPos!) > 0.5) {
+        _displayGuardPos = _lerpLatLng(_displayGuardPos!, _targetGuardPos!, k);
+        moving = true;
+      } else {
+        _displayGuardPos = _targetGuardPos;
+      }
+    }
+
+    if (mounted) setState(() {});
+    if (!moving) _ticker?.stop();
+  }
+
+  LatLng _lerpLatLng(LatLng a, LatLng b, double t) {
+    return LatLng(
+      a.latitude + (b.latitude - a.latitude) * t,
+      a.longitude + (b.longitude - a.longitude) * t,
+    );
   }
 
   Future<void> _loadRoute() async {
@@ -137,6 +229,16 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
           _callRoute = data;
           _isLoading = false;
         });
+
+        // Seed / refresh smooth-movement targets from the freshest route data.
+        // The backend returns the user's live position; the guard's own dot is
+        // driven by device GPS once available, so only seed it initially.
+        _setUserTarget(LatLng(data.userLatitude, data.userLongitude));
+        if (_targetGuardPos == null &&
+            data.guardLatitude != null &&
+            data.guardLongitude != null) {
+          _setGuardTarget(LatLng(data.guardLatitude!, data.guardLongitude!));
+        }
 
         // If route is not available, auto-redirect once to chat
         if (data.route == null && !_hasAutoRedirected) {
@@ -181,6 +283,172 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
           _hasAutoRedirected = true;
           context.push('/call-chat', extra: widget.callId.toString());
         }
+      }
+    }
+  }
+
+  // Ask the guard to confirm before ending the call. The guard may instead
+  // tick "Перенаправить вызов" to hand the call off to other services.
+  Future<void> _confirmEndCall() async {
+    bool redirect = false;
+    final noteController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppColors.surface,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(
+                    redirect ? Icons.alt_route : Icons.warning_amber_rounded,
+                    color: redirect ? AppColors.accent : AppColors.danger,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      redirect ? 'Перенаправить вызов?' : 'Завершить вызов?',
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    redirect
+                        ? 'Вызов будет передан другим службам — его примет ближайший свободный сотрудник.'
+                        : 'Вы действительно хотите завершить вызов?',
+                    style: const TextStyle(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 8),
+                  // Redirect toggle
+                  InkWell(
+                    onTap: () => setDialogState(() => redirect = !redirect),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: Checkbox(
+                              value: redirect,
+                              onChanged: (v) =>
+                                  setDialogState(() => redirect = v ?? false),
+                              activeColor: AppColors.accent,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Перенаправить вызов другой службе',
+                              style: TextStyle(color: AppColors.textPrimary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Optional hand-off note, shown only when redirecting
+                  if (redirect) ...[
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: noteController,
+                      maxLines: 2,
+                      maxLength: 200,
+                      style: const TextStyle(color: AppColors.textPrimary),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'Комментарий другой службе (необязательно)',
+                        hintStyle:
+                            const TextStyle(color: AppColors.textSecondary),
+                        counterStyle:
+                            const TextStyle(color: AppColors.textSecondary),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide:
+                              const BorderSide(color: AppColors.textSecondary),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: AppColors.accent),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text(
+                    'Отмена',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  child: Text(
+                    redirect ? 'Перенаправить' : 'Завершить',
+                    style: TextStyle(
+                      color: redirect ? AppColors.accent : AppColors.danger,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    final shouldRedirect = redirect;
+    final note = noteController.text.trim();
+    noteController.dispose();
+
+    if (confirmed == true) {
+      if (shouldRedirect) {
+        await _handleRedirect(note);
+      } else {
+        await _handleStatusAction('complete');
+      }
+    }
+  }
+
+  // Redirect (hand off) the active call to other security services.
+  Future<void> _handleRedirect(String note) async {
+    final idStr = widget.callId.toString();
+    try {
+      setState(() => _isLoading = true);
+      await _callRepo.redirect(idStr, note: note.isEmpty ? null : note);
+      if (mounted) {
+        // Clears local active-call state, returns to map, shows confirmation.
+        ref
+            .read(callOfferListenerProvider)
+            .handleTerminalStatus('redirected', widget.callId);
+      }
+    } catch (e) {
+      debugPrint('Redirect failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Ошибка: $e')));
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -317,16 +585,22 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
     List<LatLng> polylinePoints = [];
 
     if (route != null) {
-      // Prefer live WS position; fall back to the last fetched route coordinates
-      userPos = _liveUserPos ?? LatLng(route.userLatitude, route.userLongitude);
-      guardPos = route.guardLatitude != null && route.guardLongitude != null
-          ? LatLng(route.guardLatitude!, route.guardLongitude!)
-          : null;
+      // Use the smoothly-eased display position; fall back to the latest target
+      // or the raw route coordinates before the first frame has been eased.
+      userPos = _displayUserPos ??
+          _targetUserPos ??
+          LatLng(route.userLatitude, route.userLongitude);
+      guardPos = _displayGuardPos ??
+          _targetGuardPos ??
+          (route.guardLatitude != null && route.guardLongitude != null
+              ? LatLng(route.guardLatitude!, route.guardLongitude!)
+              : null);
       polylinePoints = route.route?.coordinates.map((c) => LatLng(c[0], c[1])).toList() ?? [];
     } else if (activeCall != null) {
-      final loc = activeCall['location'];
-      if (loc != null) {
-        userPos = LatLng(loc['latitude'], loc['longitude']);
+      final lat = _asDouble(activeCall['latitude']) ?? _asDouble(activeCall['location']?['latitude']);
+      final lng = _asDouble(activeCall['longitude']) ?? _asDouble(activeCall['location']?['longitude']);
+      if (lat != null && lng != null) {
+        userPos = _displayUserPos ?? LatLng(lat, lng);
       }
     }
 
@@ -345,7 +619,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
         initialCenter: userPos,
         initialZoom: 16.5,
         interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
-        backgroundColor: const Color(0xFF1A1A2E),
+        backgroundColor: const Color(0xFFE8E8E8),
         onMapReady: () {
           if (allPoints.length >= 2) {
             final bounds = LatLngBounds.fromPoints(allPoints);
@@ -360,11 +634,9 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
         },
       ),
       children: [
-        // ── Dark tile layer ──
+        // ── Light tile layer (matches the map preview) ──
         TileLayer(
-          urlTemplate:
-              'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-          subdomains: const ['a', 'b', 'c', 'd'],
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'kz.safecity.guard',
         ),
 
@@ -670,7 +942,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen> {
               'Завершить вызов',
               Colors.green,
               false,
-              () => _handleStatusAction('complete'),
+              () => _confirmEndCall(),
             ),
 
           const SizedBox(height: 8),

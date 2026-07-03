@@ -74,7 +74,7 @@ class ProfileScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                profile?['name'] ?? 'Имя не указано',
+                profile?['full_name'] ?? profile?['name'] ?? 'Имя не указано',
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -95,7 +95,14 @@ class ProfileScreen extends ConsumerWidget {
               _buildInfoTile(Icons.email_outlined, 'Email', profile?['email'] ?? ''),
               _buildInfoTile(Icons.phone_outlined, 'Телефон', profile?['phone'] ?? 'Не указан'),
               _buildInfoTile(Icons.badge_outlined, 'ID', profile?['id']?.toString() ?? ''),
-              _buildInfoTile(Icons.calendar_today_outlined, 'Дата регистрации', profile?['created_at']?.substring(0, 10) ?? ''),
+              _buildInfoTile(
+                Icons.calendar_today_outlined,
+                'Дата регистрации',
+                (() {
+                  final createdAtStr = profile?['created_at']?.toString() ?? '';
+                  return createdAtStr.length >= 10 ? createdAtStr.substring(0, 10) : createdAtStr;
+                })(),
+              ),
 
               const SizedBox(height: 24),
 

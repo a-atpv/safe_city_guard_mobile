@@ -552,7 +552,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    name[0].toUpperCase(),
+                    name.isNotEmpty ? name[0].toUpperCase() : '?',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 20,
