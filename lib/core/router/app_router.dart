@@ -12,6 +12,7 @@ import '../../features/calls/call_report_screen.dart';
 import '../../features/calls/call_history_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/support/support_screen.dart';
+import '../../features/navigation/navigation_screen.dart';
 import '../../features/calls/active_call_screen.dart';
 import '../../features/calls/call_chat_screen.dart';
 
@@ -67,6 +68,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final callId = state.extra as int? ?? 0;
           return ActiveCallScreen(callId: callId);
+        },
+      ),
+      GoRoute(
+        path: '/navigation',
+        builder: (context, state) {
+          final callId = state.extra as int? ?? 0;
+          return NavigationScreen(callId: callId);
         },
       ),
       GoRoute(

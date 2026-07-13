@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/api_client.dart';
 import '../../core/api_constants.dart';
 import '../../core/token_storage.dart';
@@ -66,11 +67,12 @@ class AuthRepository {
 
   Future<void> registerDevice(String token) async {
     try {
+      final packageInfo = await PackageInfo.fromPlatform();
       await _dio.post(ApiConstants.registerDevice, data: {
         'device_token': token,
         'device_type': Platform.isIOS ? 'ios' : 'android',
         'device_model': 'Guard Mobile Device',
-        'app_version': '1.0.0',
+        'app_version': packageInfo.version,
       });
     } catch (e) {
       throw Exception('Failed to register device');

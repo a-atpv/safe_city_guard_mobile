@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/app_colors.dart';
 import '../profile/profile_controller.dart';
 
@@ -18,6 +19,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _vibrationEnabled = false;
   String _language = 'Русский';
   bool _isInit = false;
+  String _appVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) {
+        setState(() => _appVersion = '${info.version} (${info.buildNumber})');
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -170,7 +182,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     const SizedBox(height: 8),
                     _buildInfoTile(
-                        Icons.info_outline, 'Версия', '1.0.0'),
+                        Icons.info_outline, 'Версия', _appVersion),
 
                     const SizedBox(height: 32),
                   ],

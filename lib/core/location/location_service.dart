@@ -3,6 +3,7 @@ import 'package:flutter_background_geolocation/flutter_background_geolocation.da
     as bg;
 import '../api_constants.dart';
 import '../token_storage.dart';
+import 'guard_location_tracker.dart';
 
 /// Background location tracking for on-duty guards.
 ///
@@ -18,7 +19,7 @@ import '../token_storage.dart';
 /// Significant-Location-Change (coarser, ~500 m) which relaunches the app in
 /// the background — Apple does not permit continuous GPS after force-quit. The
 /// backend "location freshness" gate is the safety net for the remaining gaps.
-class LocationService {
+class LocationService implements GuardLocationTracker {
   bool _ready = false;
 
   /// JWT auth block used by the native HTTP layer. When the 30-minute access
@@ -41,6 +42,7 @@ class LocationService {
 
   /// Start (or resume) background tracking. Safe to call repeatedly: on later
   /// calls it just refreshes the auth token and re-starts the SDK.
+  @override
   Future<void> start() async {
     final authorization = await _buildAuthorization();
     if (authorization == null) {
@@ -56,8 +58,18 @@ class LocationService {
         // ── Application lifecycle ──
         stopOnTerminate: false, // keep tracking after the app is killed
         startOnBoot: true, // resume tracking after a device reboot
-        enableHeadless: false, // native HTTP uploads; no Dart callback needed
+        // Headless ON so the heartbeat below still fires a fix when the app is
+        // killed — see backgroundGeolocationHeadlessTask, registered in main().
+        enableHeadless: true,
         foregroundService: true, // Android persistent notification (required)
+        // A guard standing at a post produces no movement, so distanceFilter
+        // emits nothing and last_location_update would go stale — dropping them
+        // from SOS dispatch. The heartbeat forces a fresh fix on a timer instead.
+        // 60 s is the SDK minimum; well inside the backend's 180 s freshness gate.
+        heartbeatInterval: 60,
+        preventSuspend: true, // iOS: stay awake between heartbeats
+        pausesLocationUpdatesAutomatically: false, // iOS: never let the OS pause us
+        locationAuthorizationRequest: 'Always', // background tracking needs "Always"
         notification: bg.Notification(
           title: 'Safe City — смена активна',
           text: 'Передаём геопозицию для быстрого реагирования на вызовы',
@@ -78,6 +90,22 @@ class LocationService {
         logLevel: bg.Config.LOG_LEVEL_OFF,
         debug: false,
       ));
+
+      // Foreground/backgrounded heartbeat (the app-alive counterpart to the
+      // headless task): pull a fresh fix so a motionless guard keeps reporting.
+      // Registered once, guarded by _ready.
+      bg.BackgroundGeolocation.onHeartbeat((event) async {
+        try {
+          await bg.BackgroundGeolocation.getCurrentPosition(
+            samples: 1,
+            persist: true, // persist → native autoSync POSTs it to /guard/location
+            timeout: 30,
+          );
+        } catch (e) {
+          debugPrint('LocationService: heartbeat fix failed: $e');
+        }
+      });
+
       _ready = true;
     } else {
       // Already configured this launch — just refresh the token, which may
@@ -91,7 +119,31 @@ class LocationService {
   }
 
   /// Stop background tracking (guard went off-shift).
+  @override
   Future<void> stop() async {
     await bg.BackgroundGeolocation.stop();
+  }
+}
+
+/// Headless heartbeat handler — runs in its own isolate when the app has been
+/// terminated but the shift is still active. Its whole job is to pull one fresh
+/// fix on each heartbeat so a motionless, app-killed guard keeps reporting a
+/// current position (native autoSync uploads it). The app-alive counterpart is
+/// the `onHeartbeat` listener in [LocationService.start].
+///
+/// Must be a top-level function tagged `@pragma('vm:entry-point')` and registered
+/// via `BackgroundGeolocation.registerHeadlessTask` in main() before runApp.
+@pragma('vm:entry-point')
+void backgroundGeolocationHeadlessTask(bg.HeadlessEvent headlessEvent) async {
+  if (headlessEvent.name == bg.Event.HEARTBEAT) {
+    try {
+      await bg.BackgroundGeolocation.getCurrentPosition(
+        samples: 1,
+        persist: true,
+        timeout: 30,
+      );
+    } catch (e) {
+      debugPrint('LocationService(headless): heartbeat fix failed: $e');
+    }
   }
 }
