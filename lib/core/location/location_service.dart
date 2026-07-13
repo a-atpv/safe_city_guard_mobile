@@ -86,6 +86,11 @@ class LocationService implements GuardLocationTracker {
         maxRecordsToPersist: 100, // cap the offline backlog
         authorization: authorization,
         // ── Misc ──
+        // Paired with the ACTIVITY_RECOGNITION `tools:node="remove"` in AndroidManifest:
+        // we don't ship the motion-activity permission (it makes Google Play flag the app
+        // as a "health app"), so tell the SDK not to subscribe to Motion API updates.
+        // Freshness is covered by the heartbeat above, so we lose nothing that matters.
+        disableMotionActivityUpdates: true,
         stopTimeout: 5,
         logLevel: bg.Config.LOG_LEVEL_OFF,
         debug: false,

@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
@@ -7,6 +8,17 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Required so background tracking auto-resumes after a device reboot (startOnBoot). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- flutter_background_geolocation's native layer (tslocationmanager) pulls in
+         ACTIVITY_RECOGNITION for motion-based tracking toggling, which makes Google Play
+         classify the app as a "health app" and demand a health-features declaration.
+         Safe City has no health features, so strip the permission at manifest-merge time.
+         Freshness is preserved by the 60 s heartbeat in LocationService (getCurrentPosition
+         fires regardless of motion state); the on-duty nav/live map run off geolocator's
+         foreground stream. This only drops background motion auto-detection — no impact on
+         fix accuracy, navigation, or the backend's 180 s freshness gate.
+         Paired with `disableMotionActivityUpdates: true` in LocationService.ready(). -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" tools:node="remove" />
 
     <application
         android:label="safe_city_guard_mobile"
