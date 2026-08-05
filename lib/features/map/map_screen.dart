@@ -290,17 +290,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ),
                         ],
                       ),
-                      // Center pin (selected location). This stays in the middle while you pan the map.
-                      const Center(
-                        child: IgnorePointer(
-                          child: Icon(
-                            Icons.location_pin,
-                            size: 44,
-                            color: AppColors.danger,
-                          ),
-                        ),
-                      ),
-
                       // Address label
                       Positioned(
                         top: 100,
