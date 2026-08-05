@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
     as bg;
@@ -22,6 +24,16 @@ import 'guard_location_tracker.dart';
 class LocationService implements GuardLocationTracker {
   bool _ready = false;
 
+  /// Token plumbing is registered against the one native SDK in this isolate,
+  /// so it is tracked statically — a second LocationService (a rebuilt shift
+  /// controller, say) must not double up the listeners. They stay subscribed
+  /// for the life of the isolate: tokens rotate between shifts too.
+  static bool _tokenListenersRegistered = false;
+
+  /// Access token last handed to the SDK — lets [_pushAuthorizationToSdk] skip
+  /// no-op config writes, including the echo of our own write-back.
+  static String? _pushedAccessToken;
+
   /// JWT auth block used by the native HTTP layer. When the 30-minute access
   /// token expires mid-shift, the SDK POSTs [refreshUrl] with [refreshPayload]
   /// and swaps in the new token natively — so uploads keep authenticating even
@@ -30,6 +42,7 @@ class LocationService implements GuardLocationTracker {
     final accessToken = await TokenStorage().getAccessToken();
     final refreshToken = await TokenStorage().getRefreshToken();
     if (accessToken == null) return null;
+    _pushedAccessToken = accessToken;
     return bg.Authorization(
       strategy: bg.Authorization.STRATEGY_JWT,
       accessToken: accessToken,
@@ -38,6 +51,34 @@ class LocationService implements GuardLocationTracker {
       refreshUrl: '${ApiConstants.guardBaseUrl}${ApiConstants.refresh}',
       refreshPayload: const {'refresh_token': '{refreshToken}'},
     );
+  }
+
+  /// Hand the Dart-side tokens to the native layer. Called whenever
+  /// [TokenStorage] changes, so a renewal done by the Dart interceptor doesn't
+  /// leave the SDK holding an older pair.
+  Future<void> _pushAuthorizationToSdk() async {
+    final accessToken = await TokenStorage().getAccessToken();
+    if (accessToken == null || accessToken == _pushedAccessToken) return;
+    final authorization = await _buildAuthorization();
+    if (authorization == null) return;
+    await bg.BackgroundGeolocation.setConfig(bg.Config(authorization: authorization));
+    debugPrint('LocationService: pushed renewed tokens to the native layer');
+  }
+
+  Future<void> _onSdkAuthorization(bg.AuthorizationEvent event) async {
+    if (event.success) {
+      // Record it as already-pushed so the TokenStorage change we are about to
+      // cause doesn't bounce the same token straight back at the SDK.
+      _pushedAccessToken = await _persistSdkTokens(event) ?? _pushedAccessToken;
+      return;
+    }
+    debugPrint(
+        'LocationService: native token refresh failed (${event.status}): ${event.error}');
+    // The SDK's copy was rejected. Ours may be newer — the Dart interceptor
+    // renews on its own 401s — so hand it over instead of declaring the session
+    // dead here. If the Dart pair is dead too, the next Dart-side call is what
+    // ends the session, on the one code path that owns that decision.
+    await _pushAuthorizationToSdk();
   }
 
   /// Start (or resume) background tracking. Safe to call repeatedly: on later
@@ -96,6 +137,13 @@ class LocationService implements GuardLocationTracker {
         debug: false,
       ));
 
+      // Keep the two token stores in step, both ways.
+      if (!_tokenListenersRegistered) {
+        _tokenListenersRegistered = true;
+        bg.BackgroundGeolocation.onAuthorization(_onSdkAuthorization);
+        TokenStorage.changes.listen((_) => _pushAuthorizationToSdk());
+      }
+
       // Foreground/backgrounded heartbeat (the app-alive counterpart to the
       // headless task): pull a fresh fix so a motionless guard keeps reporting.
       // Registered once, guarded by _ready.
@@ -130,6 +178,29 @@ class LocationService implements GuardLocationTracker {
   }
 }
 
+/// Persist tokens the native layer renewed on its own.
+///
+/// The SDK refreshes the JWT natively — that is the whole point of
+/// [bg.Authorization.STRATEGY_JWT] — and the backend rotates the refresh token
+/// on every renew. Without writing the result back, the Dart side sits on a
+/// refresh token that stops rotating and dies of old age after
+/// REFRESH_TOKEN_EXPIRE_DAYS, signing the guard out while the native layer is
+/// still happily uploading fixes. Shared by the app-alive listener and the
+/// headless task, since either isolate can be the one that renews.
+/// Returns the stored access token, or null when the event carried none.
+Future<String?> _persistSdkTokens(bg.AuthorizationEvent event) async {
+  final response = event.response;
+  final accessToken = response?['access_token'] as String?;
+  final refreshToken = response?['refresh_token'] as String?;
+  if (accessToken == null || refreshToken == null) {
+    debugPrint('LocationService: authorization event without tokens, ignoring');
+    return null;
+  }
+  await TokenStorage().saveTokens(accessToken, refreshToken);
+  debugPrint('LocationService: stored tokens renewed by the native layer');
+  return accessToken;
+}
+
 /// Headless heartbeat handler — runs in its own isolate when the app has been
 /// terminated but the shift is still active. Its whole job is to pull one fresh
 /// fix on each heartbeat so a motionless, app-killed guard keeps reporting a
@@ -140,6 +211,17 @@ class LocationService implements GuardLocationTracker {
 /// via `BackgroundGeolocation.registerHeadlessTask` in main() before runApp.
 @pragma('vm:entry-point')
 void backgroundGeolocationHeadlessTask(bg.HeadlessEvent headlessEvent) async {
+  // The app-killed counterpart of LocationService._onSdkAuthorization: a renewal
+  // that happens while no Dart UI isolate exists must still reach SharedPreferences,
+  // otherwise the guard comes back to a session that expired behind their back.
+  if (headlessEvent.name == bg.Event.AUTHORIZATION) {
+    final event = headlessEvent.event;
+    if (event is bg.AuthorizationEvent && event.success) {
+      await _persistSdkTokens(event);
+    }
+    return;
+  }
+
   if (headlessEvent.name == bg.Event.HEARTBEAT) {
     try {
       await bg.BackgroundGeolocation.getCurrentPosition(
