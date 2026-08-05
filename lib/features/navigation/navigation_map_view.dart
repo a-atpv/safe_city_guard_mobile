@@ -55,7 +55,9 @@ class _NavigationMapViewState extends State<NavigationMapView> {
   @override
   Widget build(BuildContext context) {
     return mb.MapLibreMap(
-      styleString: MapConfig.styleUrl,
+      // Растровая подложка 2ГИС (переход на 2gis): прежний MapTiler-стиль
+      // требовал ключ, который так и не был выписан, и карта была пустой.
+      styleString: MapConfig.navStyle,
       initialCameraPosition: const mb.CameraPosition(
         target: mb.LatLng(MapConfig.fallbackLat, MapConfig.fallbackLng),
         zoom: 15,

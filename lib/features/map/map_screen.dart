@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -6,9 +5,10 @@ import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_colors.dart';
+import '../../core/map_config.dart';
+import '../../core/services/reverse_geocoder.dart';
 import '../home/shift_controller.dart';
 import '../calls/call_controller.dart';
 
@@ -82,37 +82,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _reverseGeocode(LatLng pos) async {
-    try {
-      final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?lat=${pos.latitude}&lon=${pos.longitude}&format=json&addressdetails=1&accept-language=ru',
-      );
-      final response = await http.get(url, headers: {
-        'User-Agent': 'SafeCityGuard/1.0',
-      });
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final address = data['address'];
-        String label = '';
-
-        // Build a concise address: street + house number, or road
-        final road = address?['road'] ?? address?['street'] ?? '';
-        final house = address?['house_number'] ?? '';
-
-        if (road.isNotEmpty) {
-          label = road;
-          if (house.isNotEmpty) label += ' $house';
-        } else {
-          // fallback to display_name
-          label = data['display_name']?.split(',')?.take(2)?.join(', ') ?? '';
-        }
-
-        if (mounted && label.isNotEmpty) {
-          setState(() => _currentAddress = label);
-        }
-      }
-    } catch (_) {
-      // Keep the fallback text
+    // Адрес приходит с нашего бэкенда (2ГИС, фолбэк Nominatim).
+    final label = await ReverseGeocoder.shortAddress(pos.latitude, pos.longitude);
+    if (mounted && label != null && label.isNotEmpty) {
+      setState(() => _currentAddress = label);
     }
   }
 
@@ -152,30 +125,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return 'Адрес не указан';
     }
 
-    try {
-      final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json&addressdetails=1&accept-language=ru',
-      );
-      final response = await http.get(url, headers: {
-        'User-Agent': 'SafeCityGuard/1.0',
-      });
-      if (response.statusCode != 200) return 'Адрес не указан';
-      final data = json.decode(response.body);
-      final address = data['address'];
-
-      final road = address?['road'] ?? address?['street'] ?? '';
-      final house = address?['house_number'] ?? '';
-      if (road is String && road.isNotEmpty) {
-        var label = road;
-        if (house is String && house.isNotEmpty) label += ' $house';
-        return label;
-      }
-
-      final display = data['display_name'];
-      if (display is String && display.isNotEmpty) {
-        return display.split(',').take(2).join(', ');
-      }
-    } catch (_) {}
+    final label = await ReverseGeocoder.shortAddress(lat, lng);
+    if (label != null && label.isNotEmpty) return label;
 
     return 'Адрес не указан';
   }
@@ -292,9 +243,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         ),
                         children: [
                           TileLayer(
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            urlTemplate: MapConfig.tileUrlTemplate,
+                            subdomains: MapConfig.tileSubdomains,
+                            maxNativeZoom: MapConfig.tileMaxNativeZoom,
                             userAgentPackageName: 'com.safecity.guard',
+                          ),
+                          const SimpleAttributionWidget(
+                            source: Text(MapConfig.attribution),
                           ),
                           // GPS location marker (user position)
                           MarkerLayer(
@@ -803,34 +758,8 @@ class _FullScreenMapScreenState extends State<_FullScreenMapScreen> {
     _controller.move(cam.center, nextZoom);
   }
 
-  Future<String?> _reverseGeocode(LatLng pos) async {
-    try {
-      final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?lat=${pos.latitude}&lon=${pos.longitude}&format=json&addressdetails=1&accept-language=ru',
-      );
-      final response = await http.get(url, headers: {
-        'User-Agent': 'SafeCityGuard/1.0',
-      });
-      if (response.statusCode != 200) return null;
-      final data = json.decode(response.body);
-      final address = data['address'];
-
-      final road = address?['road'] ?? address?['street'] ?? '';
-      final house = address?['house_number'] ?? '';
-      if (road is String && road.isNotEmpty) {
-        var label = road;
-        if (house is String && house.isNotEmpty) label += ' $house';
-        return label;
-      }
-      final display = data['display_name'];
-      if (display is String && display.isNotEmpty) {
-        return display.split(',').take(2).join(', ');
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
+  Future<String?> _reverseGeocode(LatLng pos) =>
+      ReverseGeocoder.shortAddress(pos.latitude, pos.longitude);
 
   void _submit() {
     final cam = _controller.camera;
@@ -855,8 +784,13 @@ class _FullScreenMapScreenState extends State<_FullScreenMapScreen> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  urlTemplate: MapConfig.tileUrlTemplate,
+                  subdomains: MapConfig.tileSubdomains,
+                  maxNativeZoom: MapConfig.tileMaxNativeZoom,
                   userAgentPackageName: 'com.safecity.guard',
+                ),
+                const SimpleAttributionWidget(
+                  source: Text(MapConfig.attribution),
                 ),
               ],
             ),

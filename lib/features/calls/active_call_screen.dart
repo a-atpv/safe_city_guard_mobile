@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
-import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -16,6 +14,8 @@ import 'call_repository.dart';
 import 'call_controller.dart';
 import 'call_offer_listener.dart';
 import '../../core/app_colors.dart';
+import '../../core/map_config.dart';
+import '../../core/services/reverse_geocoder.dart';
 import '../../core/websocket/websocket_service.dart';
 
 class ActiveCallScreen extends ConsumerStatefulWidget {
@@ -80,35 +80,13 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
     _lastGeocodedLat = lat;
     _lastGeocodedLng = lng;
 
-    try {
-      final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json&addressdetails=1&accept-language=ru',
-      );
-      final response = await http.get(url, headers: {
-        'User-Agent': 'SafeCityGuard/1.0',
+    // Адрес приходит с нашего бэкенда (2ГИС, фолбэк Nominatim).
+    final label = await ReverseGeocoder.shortAddress(lat, lng);
+    if (mounted && label != null && label.isNotEmpty) {
+      setState(() {
+        _geocodedAddress = label;
       });
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final address = data['address'];
-        String label = '';
-        final road = address?['road'] ?? address?['street'] ?? '';
-        final house = address?['house_number'] ?? '';
-        if (road is String && road.isNotEmpty) {
-          label = road;
-          if (house is String && house.isNotEmpty) label += ' $house';
-        } else {
-          final display = data['display_name'];
-          if (display is String && display.isNotEmpty) {
-            label = display.split(',').take(2).join(', ');
-          }
-        }
-        if (mounted && label.isNotEmpty) {
-          setState(() {
-            _geocodedAddress = label;
-          });
-        }
-      }
-    } catch (_) {}
+    }
   }
 
   @override
@@ -799,10 +777,15 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
         },
       ),
       children: [
-        // ── Light tile layer (matches the map preview) ──
+        // ── 2ГИС tile layer (matches the map preview) ──
         TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          urlTemplate: MapConfig.tileUrlTemplate,
+          subdomains: MapConfig.tileSubdomains,
+          maxNativeZoom: MapConfig.tileMaxNativeZoom,
           userAgentPackageName: 'kz.safecity.guard',
+        ),
+        const SimpleAttributionWidget(
+          source: Text(MapConfig.attribution),
         ),
 
         // ── Route polyline (the blue line) ──

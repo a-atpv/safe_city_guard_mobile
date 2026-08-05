@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_colors.dart';
+import '../../core/map_config.dart';
 import '../calls/call_controller.dart';
 
 class IncidentDetailScreen extends ConsumerStatefulWidget {
@@ -181,9 +182,13 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
                           ),
                           children: [
                             TileLayer(
-                              urlTemplate:
-                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              urlTemplate: MapConfig.tileUrlTemplate,
+                              subdomains: MapConfig.tileSubdomains,
+                              maxNativeZoom: MapConfig.tileMaxNativeZoom,
                               userAgentPackageName: 'com.safecity.guard',
+                            ),
+                            const SimpleAttributionWidget(
+                              source: Text(MapConfig.attribution),
                             ),
                             MarkerLayer(
                               markers: [
