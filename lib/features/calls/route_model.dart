@@ -59,6 +59,15 @@ class CallRouteData {
   final double userLatitude;
   final double userLongitude;
   final String? userAddress;
+  /// Возраст точки вызывающего на момент ответа сервера. Бэкенд всегда отдаёт
+  /// самую свежую известную точку и её возраст — молчаливой подмены на место
+  /// нажатия SOS больше нет, поэтому устаревание видно в интерфейсе.
+  final int? userLocationAgeSeconds;
+  /// Погрешность фикса в метрах (null — точка вызова, погрешность неизвестна).
+  final double? userLocationAccuracy;
+  final bool userLocationIsLive;
+  /// `live` — отслеживаемая позиция человека, `call` — место нажатия SOS.
+  final String userLocationSource;
   final double? guardLatitude;
   final double? guardLongitude;
   final RouteData? route;
@@ -76,6 +85,10 @@ class CallRouteData {
      required this.userLatitude,
      required this.userLongitude,
      this.userAddress,
+     this.userLocationAgeSeconds,
+     this.userLocationAccuracy,
+     this.userLocationIsLive = false,
+     this.userLocationSource = 'call',
      this.guardLatitude,
      this.guardLongitude,
      this.route,
@@ -94,6 +107,10 @@ class CallRouteData {
      userLatitude: (json['user_latitude'] as num).toDouble(),
      userLongitude: (json['user_longitude'] as num).toDouble(),
      userAddress: json['user_address'],
+     userLocationAgeSeconds: (json['user_location_age_seconds'] as num?)?.round(),
+     userLocationAccuracy: (json['user_location_accuracy'] as num?)?.toDouble(),
+     userLocationIsLive: json['user_location_is_live'] == true,
+     userLocationSource: json['user_location_source'] ?? 'call',
      guardLatitude: (json['guard_latitude'] as num?)?.toDouble(),
      guardLongitude: (json['guard_longitude'] as num?)?.toDouble(),
      route: json['route'] != null ? RouteData.fromJson(json['route']) : null,

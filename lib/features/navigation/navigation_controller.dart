@@ -56,14 +56,21 @@ class NavigationController {
   static const _minRerouteGap = Duration(seconds: 12);
   static const _offRouteGrace = Duration(seconds: 6);
 
+  // Own-marker quality gate. Once we have a fix, ignore coarse cell/Wi-Fi fixes
+  // so the guard's dot and the first-person camera stay put instead of jumping a
+  // block and snapping back. Matches the backend's acceptance bar for a good fix.
+  static const _maxFixAccuracyM = 35.0;
+
   Future<void> start() async {
     await _initTts();
     await _fetchRoute(seed: true); // gets victim coords + initial route
     _wsSub = _ws.messageStream.listen(_onWsMessage);
     _posSub = Geolocator.getPositionStream(
+      // Навигация: точность важнее батареи, поток без фильтра расстояния, чтобы
+      // манёвры и камера не отставали от реального движения.
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
       ),
     ).listen(_onGuardFix,
         onError: (e) => debugPrint('NavigationController: pos stream error: $e'));
@@ -89,6 +96,13 @@ class NavigationController {
   }
 
   void _onGuardFix(Position pos) {
+    // Drop a coarse fix once we already have a position — but accept anything
+    // while we have none, so the marker/camera can bootstrap at nav start.
+    if (guard.value != null &&
+        pos.accuracy > 0 &&
+        pos.accuracy > _maxFixAccuracyM) {
+      return;
+    }
     final g = LatLng(pos.latitude, pos.longitude);
     guard.value = g;
     final t = target.value;

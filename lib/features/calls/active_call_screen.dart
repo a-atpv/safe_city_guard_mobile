@@ -41,6 +41,22 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
   // Real-time positions. `_target*` is the latest known coordinate; `_display*`
   // is eased toward the target each frame so markers glide instead of jumping.
   LatLng? _targetUserPos, _displayUserPos;
+  // Own-marker quality gate: once we have a position, ignore coarse cell/Wi-Fi
+  // fixes so the blue dot stays put instead of easing to a bad fix and back.
+  // Matches the backend's acceptance bar for a good fix.
+  static const _maxFixAccuracyM = 35.0;
+
+  // ── Freshness of the caller's point ──────────────────────────────────────
+  // The backend never swaps a stale position for the call's creation-time
+  // coordinates behind our back: it hands over the freshest point it has plus
+  // its age, and the guard is told outright when that point stopped updating.
+  // A confident dot on a place the caller left ten minutes ago is the one error
+  // the guard cannot spot from the screen.
+  DateTime? _userFixAt;
+  double? _userAccuracyM;
+  String _userPosSource = 'call';
+  /// Дольше этого — точка считается устаревшей (клиент шлёт координаты раз в 5 с).
+  static const _staleAfter = Duration(seconds: 30);
   LatLng? _targetGuardPos, _displayGuardPos;
   Ticker? _ticker;
   Duration _lastElapsed = Duration.zero;
@@ -124,6 +140,16 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
         final lat = (msg['latitude'] as num?)?.toDouble();
         final lng = (msg['longitude'] as num?)?.toDouble();
         if (lat != null && lng != null && mounted) {
+          // Возраст считаем от момента самого GPS-фикса, а не от прихода пуша:
+          // телефон может переслать старый фикс, и он не должен выглядеть свежим.
+          final ageMs =
+              (((msg['age_seconds'] as num?)?.toDouble() ?? 0) * 1000).round();
+          setState(() {
+            _userFixAt =
+                DateTime.now().subtract(Duration(milliseconds: ageMs));
+            _userAccuracyM = (msg['accuracy'] as num?)?.toDouble();
+            _userPosSource = 'live';
+          });
           _setUserTarget(LatLng(lat, lng));
         }
       }
@@ -132,13 +158,23 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
     // Guard's own position straight from the device GPS — instant and smooth,
     // with no server round-trip (the route only refreshes the blue dot every 15s).
     _guardPosSub = Geolocator.getPositionStream(
+      // bestForNavigation + нулевой фильтр расстояния: во время выезда важнее
+      // точность и непрерывность потока, чем экономия батареи.
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 0,
       ),
     ).listen(
       (pos) {
-        if (mounted) _setGuardTarget(LatLng(pos.latitude, pos.longitude));
+        if (!mounted) return;
+        // Accept the first fix unconditionally so the dot bootstraps; after that,
+        // drop coarse fixes rather than let them yank the marker.
+        if (_targetGuardPos != null &&
+            pos.accuracy > 0 &&
+            pos.accuracy > _maxFixAccuracyM) {
+          return;
+        }
+        _setGuardTarget(LatLng(pos.latitude, pos.longitude));
       },
       onError: (_) {},
     );
@@ -228,6 +264,17 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
         setState(() {
           _callRoute = data;
           _isLoading = false;
+          // Пуш по вебсокету приходит чаще, чем перезагружается маршрут, поэтому
+          // серверным возрастом перебиваем только если он свежее локального.
+          final age = data.userLocationAgeSeconds;
+          if (age != null) {
+            final serverFixAt = DateTime.now().subtract(Duration(seconds: age));
+            if (_userFixAt == null || serverFixAt.isAfter(_userFixAt!)) {
+              _userFixAt = serverFixAt;
+              _userAccuracyM = data.userLocationAccuracy;
+              _userPosSource = data.userLocationSource;
+            }
+          }
         });
 
         // Seed / refresh smooth-movement targets from the freshest route data.
@@ -496,6 +543,10 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
       );
     }
 
+    // Пересчитывается каждую секунду вместе с таймером вызова, поэтому текст
+    // «устарела N мин назад» идёт по времени, а не по приходу новых данных.
+    final staleBanner = _buildStaleLocationBanner();
+
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       body: Stack(
@@ -530,6 +581,15 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
               child: _buildRouteErrorBanner(),
             ),
 
+          // ===== STALE LOCATION BANNER =====
+          if (staleBanner != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 92,
+              left: 20,
+              right: 20,
+              child: staleBanner,
+            ),
+
           // ===== BOTTOM SHEET =====
           Positioned(
             left: 0,
@@ -548,6 +608,111 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // Свежесть точки вызывающего
+  // ─────────────────────────────────────────────
+
+  /// Сколько прошло с момента самого GPS-фикса (не с момента доставки пуша).
+  Duration? get _userFixAge =>
+      _userFixAt == null ? null : DateTime.now().difference(_userFixAt!);
+
+  static String _formatAge(Duration age) {
+    final seconds = age.inSeconds;
+    if (seconds < 60) return '$seconds с назад';
+    final minutes = age.inMinutes;
+    if (minutes < 60) return '$minutes мин назад';
+    return '${age.inHours} ч ${minutes % 60} мин назад';
+  }
+
+  /// Строка под адресом: «Обновлено 4 с назад · ±8 м» либо предупреждение.
+  /// Пустой её не делаем никогда — охранник должен видеть, живая точка или нет,
+  /// не додумывая по косвенным признакам.
+  Widget _buildFreshnessLine() {
+    final age = _userFixAge;
+    if (age == null) {
+      return const Text(
+        'Свежесть координат неизвестна',
+        style: TextStyle(color: Colors.white38, fontSize: 11),
+      );
+    }
+
+    final stale = age > _staleAfter;
+    final accuracy = _userAccuracyM;
+    final accuracyText =
+        accuracy != null ? ' · ±${accuracy.round()} м' : '';
+    final sourceText = _userPosSource == 'live'
+        ? 'Обновлено ${_formatAge(age)}'
+        : 'Точка вызова, ${_formatAge(age)}';
+
+    return Row(
+      children: [
+        Icon(
+          stale ? Icons.gps_off : Icons.gps_fixed,
+          size: 12,
+          color: stale ? Colors.orangeAccent : Colors.greenAccent,
+        ),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            '$sourceText$accuracyText',
+            style: TextStyle(
+              color: stale ? Colors.orangeAccent : Colors.white54,
+              fontSize: 11,
+              fontWeight: stale ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Баннер поверх карты. Появляется только когда точке нельзя доверять как
+  /// текущей: координаты перестали приходить. Молчаливой подмены на место
+  /// нажатия SOS больше нет — вместо неё честное «устарела N мин назад».
+  Widget? _buildStaleLocationBanner() {
+    final age = _userFixAge;
+    if (age == null || age <= _staleAfter) return null;
+
+    final critical = age.inMinutes >= 2;
+    final color = critical ? Colors.redAccent : Colors.orange;
+    final headline = _userPosSource == 'live'
+        ? 'Точка устарела: ${_formatAge(age)}'
+        : 'Координаты не обновляются: точка с момента вызова, ${_formatAge(age)}';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.gps_off, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  headline,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Text(
+                  'Человек мог сместиться. Свяжитесь по связи и уточните место.',
+                  style: TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -648,6 +813,24 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
                 points: polylinePoints,
                 strokeWidth: 5.0,
                 color: const Color(0xFF4A90FF), // Blue route line
+              ),
+            ],
+          ),
+
+        // ── Круг погрешности вокруг вызывающего ──
+        // Точка на карте всегда выглядит точной до метра; круг показывает
+        // реальный разброс фикса, чтобы охранник не искал человека там, где
+        // его гарантированно нет.
+        if (_userAccuracyM != null && _userAccuracyM! > 0)
+          CircleLayer(
+            circles: [
+              CircleMarker(
+                point: userPos,
+                radius: _userAccuracyM!,
+                useRadiusInMeter: true,
+                color: Colors.red.withValues(alpha: 0.10),
+                borderColor: Colors.red.withValues(alpha: 0.35),
+                borderStrokeWidth: 1,
               ),
             ],
           ),
@@ -929,6 +1112,8 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
                       address,
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                     ),
+                    const SizedBox(height: 4),
+                    _buildFreshnessLine(),
                   ],
                 ),
               ),
