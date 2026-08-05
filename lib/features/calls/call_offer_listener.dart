@@ -5,9 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../core/websocket/websocket_service.dart';
 import '../../core/app_colors.dart';
 import '../../core/notifications/push_notification_service.dart';
+import '../../core/notifications/sos_siren.dart';
 import '../../core/router/app_router.dart'; // import rootNavigatorKey
 import 'widgets/call_offer_sheet.dart';
-import 'sos_alert_manager.dart';
 import 'call_controller.dart';
 import '../home/shift_controller.dart';
 
@@ -17,17 +17,38 @@ final callOfferListenerProvider = Provider<CallOfferListener>((ref) {
 
 class CallOfferListener {
   StreamSubscription? _subscription;
+  AppLifecycleListener? _lifecycleListener;
   final Ref _ref;
   bool _isOfferSheetOpen = false;
 
   CallOfferListener(this._ref) {
     _startListening();
-    
+
     // Register FCM callback for terminal notification taps
     PushNotificationService().setOnTerminalStatusReceived((status, callId) {
       handleTerminalStatus(status, callId);
     });
+
+    // An SOS push landing while the app is on screen: the siren is already
+    // playing, make sure the call list catches up even if the socket is down.
+    PushNotificationService().setOnSosPush((_) {
+      _ref.read(callControllerProvider.notifier).refresh();
+    });
+
+    // The guard tapped the siren notification and the app came forward — hand
+    // the alert over from the system notification to the in-app siren so it
+    // keeps sounding until they accept or decline.
+    _lifecycleListener = AppLifecycleListener(
+      onResume: () {
+        if (!_isOfferSheetOpen) return;
+        SosSiren.cancelNotification();
+        SosSiren.startInApp();
+      },
+    );
   }
+
+  bool get _isAppInForeground =>
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
   void _startListening() {
     debugPrint('CallOfferListener: Starting');
@@ -85,7 +106,7 @@ class CallOfferListener {
   }
 
   void _closeOfferSheet() {
-    SOSAlertManager.stopAlert();
+    SosSiren.stop();
     if (!_isOfferSheetOpen) return;
     final context = rootNavigatorKey.currentContext;
     if (context != null && Navigator.of(context).canPop()) {
@@ -97,8 +118,16 @@ class CallOfferListener {
   void _handleCallOffer(Map<String, dynamic> offer) {
     debugPrint('CallOfferListener: Handling offer: $offer');
 
-    // Trigger Sound/Vibration
-    SOSAlertManager.triggerAlert();
+    if (_isAppInForeground) {
+      // On screen: the app owns the siren. Drop any notification the FCM
+      // background isolate may have already posted so the two do not overlap.
+      SosSiren.cancelNotification();
+      SosSiren.startInApp();
+    }
+    // Backgrounded but the socket is still alive: leave the siren to the
+    // notification posted from the push handler — it survives the app being
+    // killed, the in-app player does not. The lifecycle listener above takes
+    // over the moment the guard opens the app.
 
     // Show Bottom Sheet using the root navigator key
     final context = rootNavigatorKey.currentContext;
@@ -114,7 +143,7 @@ class CallOfferListener {
       ).then((_) {
         _isOfferSheetOpen = false;
         // Stop alert when sheet is closed (accepted or declined)
-        SOSAlertManager.stopAlert();
+        SosSiren.stop();
       });
     } else {
       debugPrint('CallOfferListener: Context is null, cannot show bottom sheet');
@@ -125,7 +154,7 @@ class CallOfferListener {
     debugPrint('CallOfferListener: Handling terminal status $status for call $callId');
     
     // 1. Stop alert/siren sounds and vibration
-    SOSAlertManager.stopAlert();
+    SosSiren.stop();
     
     // 2. Clear active call state locally
     _ref.read(callControllerProvider.notifier).clearActiveCall();
@@ -215,5 +244,6 @@ class CallOfferListener {
 
   void dispose() {
     _subscription?.cancel();
+    _lifecycleListener?.dispose();
   }
 }

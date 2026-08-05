@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- SOS siren: the alert notification wakes the screen and shows the offer over
+         the lock screen (Android 14+ gates this behind a user-grantable permission,
+         requested at startup by PushNotificationService). VIBRATE backs the siren's
+         vibration pattern. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Required so background tracking auto-resumes after a device reboot (startOnBoot). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -24,12 +30,16 @@
         android:label="safe_city_guard_mobile"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- showWhenLocked/turnScreenOn: so the SOS siren's full-screen intent can wake
+             the display and put the incoming offer in front of the lock screen. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">

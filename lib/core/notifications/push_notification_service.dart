@@ -2,19 +2,56 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../firebase_options.dart';
 import '../router/app_router.dart';
+import 'sos_siren.dart';
 
 /// Top-level function to handle background messages.
 /// This must be a top-level function (not inside a class) to work correctly.
+///
+/// SOS pushes are sent to guards as **data-only** messages (see the backend's
+/// `NotificationService._send_sos_push`), so Android does not auto-display
+/// them — this handler is what renders the alert, and it renders it on the
+/// siren channel. That is the whole point: a data message wakes this isolate
+/// even when the app is backgrounded or killed, and the notification it posts
+/// carries `FLAG_INSISTENT`, so the system keeps looping the siren on the alarm
+/// stream after the isolate is gone.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  log("Handling a background message: ${message.messageId}");
-  // For now, we just log. You could also show a local notification here if needed,
-  // but FCM usually handles display messages automatically.
+  final Map<String, dynamic> data = message.data;
+  final String? type = data['type']?.toString();
+  log('Handling a background message: ${message.messageId} (type=$type)');
+
+  if (!kSosPushTypes.contains(type)) {
+    // The call is over (user cancelled, someone else closed it) while the app
+    // is not running — silence a siren that is still going.
+    final String? status = data['status']?.toString().toLowerCase();
+    if (status != null && kTerminalCallStatuses.contains(status)) {
+      await SosSiren.cancelNotification(initializePlugin: true);
+    }
+    return;
+  }
+
+  // Fresh isolate: Firebase is not bound here yet.
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e) {
+    log('Background handler: Firebase already initialized or failed: $e');
+  }
+
+  await SosSiren.showNotification(
+    title: data['title']?.toString() ?? '🚨 Экстренный вызов!',
+    body: data['body']?.toString() ??
+        'Нужна ваша помощь. Откройте приложение и примите вызов.',
+    payload: jsonEncode(data),
+    initializePlugin: true,
+  );
 }
 
 class PushNotificationService {
@@ -74,7 +111,7 @@ class PushNotificationService {
       sound: true,
     );
 
-    // 3. Create Android Notification Channel
+    // 3. Create Android Notification Channels
     if (Platform.isAndroid) {
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         'emergency_channel', // id
@@ -85,9 +122,15 @@ class PushNotificationService {
         enableVibration: true,
       );
 
-      await _localNotifications
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(channel);
+      final AndroidFlutterLocalNotificationsPlugin? android = _localNotifications
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+      await android?.createNotificationChannel(channel);
+
+      // Dedicated looping-siren channel for SOS offers.
+      await SosSiren.ensureChannel();
+
+      await _requestAndroidAlertPermissions(android);
     }
 
     // 4. Set up Background Messenger
@@ -96,7 +139,16 @@ class PushNotificationService {
     // 5. Handle Foreground Messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       log('Received foreground message: ${message.notification?.title}');
-      
+
+      final String? type = message.data['type']?.toString();
+      if (kSosPushTypes.contains(type)) {
+        // App is on screen: play the siren in-app instead of stacking a
+        // heads-up notification on top of the incoming-offer sheet.
+        SosSiren.startInApp();
+        _onSosPushCallback?.call(message.data);
+        return;
+      }
+
       // On iOS, setForegroundNotificationPresentationOptions handles the display
       // On Android, we show a local notification
       if (message.notification != null && Platform.isAndroid) {
@@ -149,11 +201,43 @@ class PushNotificationService {
     });
   }
 
+  static const String _fullScreenIntentAskedKey = 'sos_full_screen_intent_asked';
+
+  /// Notifications (Android 13+) and full-screen intents (Android 14+) are both
+  /// user-grantable. Without the latter the siren still sounds but the screen is
+  /// not woken, so it is worth asking for — once. The plugin sends the guard to
+  /// a system settings screen when it is missing, and re-asking on every launch
+  /// would trap them in it.
+  Future<void> _requestAndroidAlertPermissions(
+    AndroidFlutterLocalNotificationsPlugin? android,
+  ) async {
+    if (android == null) return;
+    try {
+      await android.requestNotificationsPermission();
+
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_fullScreenIntentAskedKey) ?? false) return;
+      await prefs.setBool(_fullScreenIntentAskedKey, true);
+      final granted = await android.requestFullScreenIntentPermission();
+      log('Push Notifications: full-screen intent permission granted=$granted');
+    } catch (e) {
+      log('Push Notifications: alert permission request failed: $e');
+    }
+  }
+
   void Function(String token)? _onTokenCallback;
 
   /// Sets a callback to be called whenever a new FCM token is obtained or refreshed.
   void setOnTokenCallback(void Function(String token) callback) {
     _onTokenCallback = callback;
+  }
+
+  void Function(Map<String, dynamic> data)? _onSosPushCallback;
+
+  /// Called when an SOS push lands while the app is on screen. Lets the call
+  /// layer pull the offer over HTTP even if the WebSocket happens to be down.
+  void setOnSosPush(void Function(Map<String, dynamic> data) callback) {
+    _onSosPushCallback = callback;
   }
 
   Future<String?> getFcmToken() async {
@@ -219,6 +303,9 @@ class PushNotificationService {
   }
 
   void _onNotificationTapped(NotificationResponse response) {
+    // Tapping the siren notification silences it (the system stops looping once
+    // it is cancelled); the in-app alert takes over from here.
+    SosSiren.stop();
     if (response.payload != null) {
       final data = jsonDecode(response.payload!) as Map<String, dynamic>;
       _handleNotificationPayload(data);
