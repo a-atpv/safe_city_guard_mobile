@@ -84,8 +84,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _reverseGeocode(LatLng pos) async {
     // Адрес приходит с нашего бэкенда (2ГИС, фолбэк Nominatim).
     final label = await ReverseGeocoder.shortAddress(pos.latitude, pos.longitude);
-    if (mounted && label != null && label.isNotEmpty) {
+    if (!mounted) return;
+    if (label != null && label.isNotEmpty) {
       setState(() => _currentAddress = label);
+    } else if (_currentAddress == 'Определение адреса...') {
+      // Геокодер недоступен — покажем координаты, а не вечное «Определение…»:
+      // для SOS точка важнее подписи.
+      setState(() => _currentAddress =
+          '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}');
     }
   }
 
@@ -249,7 +255,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             userAgentPackageName: 'com.safecity.guard',
                           ),
                           const SimpleAttributionWidget(
-                            source: Text(MapConfig.attribution),
+                            source: Text(MapConfig.attributionSource),
                           ),
                           // GPS location marker (user position)
                           MarkerLayer(
@@ -747,8 +753,14 @@ class _FullScreenMapScreenState extends State<_FullScreenMapScreen> {
     _debounce = Timer(const Duration(milliseconds: 450), () async {
       // Just keep the label responsive; no hard failure if reverse geocode fails.
       final next = await _reverseGeocode(camera.center);
-      if (!mounted || next == null) return;
-      setState(() => _address = next);
+      if (!mounted) return;
+      if (next != null) {
+        setState(() => _address = next);
+      } else if (_address == 'Определение адреса...') {
+        // Геокодер недоступен — координаты вместо вечного «Определение…».
+        setState(() => _address =
+            '${camera.center.latitude.toStringAsFixed(5)}, ${camera.center.longitude.toStringAsFixed(5)}');
+      }
     });
   }
 
@@ -790,7 +802,7 @@ class _FullScreenMapScreenState extends State<_FullScreenMapScreen> {
                   userAgentPackageName: 'com.safecity.guard',
                 ),
                 const SimpleAttributionWidget(
-                  source: Text(MapConfig.attribution),
+                  source: Text(MapConfig.attributionSource),
                 ),
               ],
             ),

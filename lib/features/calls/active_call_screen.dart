@@ -785,7 +785,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
           userAgentPackageName: 'kz.safecity.guard',
         ),
         const SimpleAttributionWidget(
-          source: Text(MapConfig.attribution),
+          source: Text(MapConfig.attributionSource),
         ),
 
         // ── Route polyline (the blue line) ──

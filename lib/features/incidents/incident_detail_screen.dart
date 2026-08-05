@@ -188,7 +188,7 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
                               userAgentPackageName: 'com.safecity.guard',
                             ),
                             const SimpleAttributionWidget(
-                              source: Text(MapConfig.attribution),
+                              source: Text(MapConfig.attributionSource),
                             ),
                             MarkerLayer(
                               markers: [

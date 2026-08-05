@@ -26,6 +26,9 @@ class MapConfig {
   /// Обязательная атрибуция подложки.
   static const String attribution = '© 2ГИС';
 
+  /// Для flutter_map SimpleAttributionWidget — он сам добавляет «© ».
+  static const String attributionSource = '2ГИС';
+
   /// Camera fallback until the first GPS fix (Almaty centre).
   static const double fallbackLat = 43.238949;
   static const double fallbackLng = 76.889709;
