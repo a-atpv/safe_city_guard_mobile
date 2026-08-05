@@ -795,15 +795,6 @@ class _FullScreenMapScreenState extends State<_FullScreenMapScreen> {
                 ),
               ],
             ),
-            const Center(
-              child: IgnorePointer(
-                child: Icon(
-                  Icons.location_pin,
-                  size: 48,
-                  color: AppColors.danger,
-                ),
-              ),
-            ),
             Positioned(
               top: 12,
               left: 12,
