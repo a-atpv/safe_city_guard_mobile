@@ -55,6 +55,11 @@ class NavigationController {
   static const _targetMovedM = 40.0;
   static const _minRerouteGap = Duration(seconds: 12);
   static const _offRouteGrace = Duration(seconds: 6);
+  // Off-route reroutes jump the queue — but they still need a floor. The fix
+  // stream runs unfiltered at ~1 Hz, and a guard parked in a yard reads as
+  // off-route indefinitely, so without this every single fix fired another
+  // paid routing request for as long as the screen stayed open.
+  static const _minForcedRerouteGap = Duration(seconds: 10);
 
   // Own-marker quality gate. Once we have a fix, ignore coarse cell/Wi-Fi fixes
   // so the guard's dot and the first-person camera stay put instead of jumping a
@@ -120,6 +125,9 @@ class NavigationController {
     if (st.offRoute) {
       _offRouteSince ??= DateTime.now();
       if (DateTime.now().difference(_offRouteSince!) >= _offRouteGrace) {
+        // Restart the grace window: staying off-route must not mean "reroute on
+        // every fix from now on" — the next attempt waits out the grace again.
+        _offRouteSince = DateTime.now();
         _maybeReroute(t, force: true);
       }
     } else {
@@ -130,11 +138,17 @@ class NavigationController {
   void _maybeReroute(LatLng t, {bool force = false}) {
     if (_rerouting) return;
     final now = DateTime.now();
-    final gapOk = _lastRouteAt == null ||
-        now.difference(_lastRouteAt!) >= _minRerouteGap;
+    final since = _lastRouteAt == null
+        ? null
+        : now.difference(_lastRouteAt!);
+    // A forced reroute (the guard left the route) is urgent, not free: it gets a
+    // shorter floor than a routine one, never none at all.
+    final gap = force ? _minForcedRerouteGap : _minRerouteGap;
+    final gapOk = since == null || since >= gap;
+    if (!gapOk) return;
     final movedEnough = _lastRoutedTarget == null ||
         NavGeo.distanceM(_lastRoutedTarget!, t) > _targetMovedM;
-    if (force || (movedEnough && gapOk)) _fetchRoute();
+    if (force || movedEnough) _fetchRoute();
   }
 
   Future<void> _fetchRoute({bool seed = false}) async {
