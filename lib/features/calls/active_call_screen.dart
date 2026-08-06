@@ -58,6 +58,24 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
   /// Дольше этого — точка считается устаревшей (клиент шлёт координаты раз в 5 с).
   static const _staleAfter = Duration(seconds: 30);
   LatLng? _targetGuardPos, _displayGuardPos;
+
+  // ── Как часто перезапрашивать маршрут ────────────────────────────────────
+  // Каждый запрос — списанная единица тарифа 2ГИС, а маршрут между двумя
+  // неподвижными точками не меняется: раньше экран платил 4 раза в минуту за
+  // один и тот же ответ, пока был открыт. Поэтому такт редкий и вдобавок
+  // пропускается, пока никто существенно не сдвинулся. Маркеры и «блю дот» от
+  // этого не тормозят — они живут на GPS и WS-пушах, без обращений к серверу.
+  static const _routeRefreshInterval = Duration(seconds: 30);
+  static const _routeRefreshMinMoveM = 50.0;
+  /// Статусы, после которых маршрут уже никому не нужен.
+  static const _closedStatuses = {
+    'completed',
+    'cancelled_by_user',
+    'cancelled_by_system',
+  };
+  /// Позиции, от которых и к которым построен текущий маршрут.
+  LatLng? _routedFromGuard, _routedToUser;
+
   Ticker? _ticker;
   Duration _lastElapsed = Duration.zero;
   static const Distance _distance = Distance();
@@ -101,9 +119,9 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
       }
     });
 
-    // Refresh route every 15 seconds (guard is moving)
-    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      _loadRoute();
+    // Перестроить маршрут, если он мог измениться (см. _maybeRefreshRoute).
+    _refreshTimer = Timer.periodic(_routeRefreshInterval, (_) {
+      _maybeRefreshRoute();
     });
 
     // Elapsed timer (the "02:34" counter in your UI)
@@ -234,6 +252,35 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
     );
   }
 
+  /// Такт таймера: маршрут перезапрашивается, только если он мог измениться.
+  ///
+  /// Вызов закрыт — таймер снимается совсем: экран может остаться открытым (на
+  /// экране отчёта, в фоне), и раньше он продолжал платить за маршрут к уже
+  /// завершённому вызову — один такой висел так 38 минут.
+  void _maybeRefreshRoute() {
+    final status = _callRoute?.callStatus;
+    if (status != null && _closedStatuses.contains(status)) {
+      _refreshTimer?.cancel();
+      _refreshTimer = null;
+      return;
+    }
+
+    // Маршрута ещё нет — прошлая попытка не удалась, пробуем снова.
+    if (_callRoute?.route == null) {
+      _loadRoute();
+      return;
+    }
+
+    final guard = _targetGuardPos;
+    final user = _targetUserPos;
+    bool movedFar(LatLng? from, LatLng? to) =>
+        from == null || to == null || _distance(from, to) > _routeRefreshMinMoveM;
+
+    if (movedFar(_routedFromGuard, guard) || movedFar(_routedToUser, user)) {
+      _loadRoute();
+    }
+  }
+
   Future<void> _loadRoute() async {
     try {
       final data = await _routeService.getRouteToCall(widget.callId);
@@ -264,6 +311,13 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
             data.guardLongitude != null) {
           _setGuardTarget(LatLng(data.guardLatitude!, data.guardLongitude!));
         }
+
+        // Концы построенного маршрута — база для следующего такта: пока обе
+        // стороны рядом с ними, перестраивать нечего.
+        _routedFromGuard = (data.guardLatitude != null && data.guardLongitude != null)
+            ? LatLng(data.guardLatitude!, data.guardLongitude!)
+            : _targetGuardPos;
+        _routedToUser = LatLng(data.userLatitude, data.userLongitude);
 
         // If route is not available, auto-redirect once to chat
         if (data.route == null && !_hasAutoRedirected) {
