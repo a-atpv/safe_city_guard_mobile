@@ -20,97 +20,335 @@ class MapScreen extends ConsumerStatefulWidget {
   ConsumerState<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends ConsumerState<MapScreen> {
-  // До первого фикса камера стоит над Актобе — городом, который обслуживаем.
-  // Раньше здесь была Астана, и охранник в Актобе успевал увидеть чужой город.
-  LatLng _currentPosition =
+/// Почему геопозиции нет — чтобы подпись на карте говорила правду.
+///
+/// Раньше любая неудача (выключенный GPS, отказ в разрешении, не поймавшийся
+/// фикс) молча заканчивалась резервной точкой Актобе, и её адрес выводился так
+/// же, как настоящий. Охранник в другом районе видел «улица Братьев Жубановых
+/// 289» и верил ему: экран не отличал «вот твой адрес» от «я не знаю, где ты».
+enum _LocationStatus {
+  resolving,
+  ok,
+  serviceDisabled,
+  denied,
+  deniedForever,
+  failed,
+}
+
+class _MapScreenState extends ConsumerState<MapScreen>
+    with WidgetsBindingObserver {
+  /// Куда смотрит камера до первого фикса — Актобе, город, который обслуживаем
+  /// (раньше здесь была Астана, и охранник в Актобе успевал увидеть чужой
+  /// город). Это ТОЛЬКО камера: ни маркер «я здесь», ни подпись адреса от
+  /// резервной точки не берутся.
+  LatLng _cameraCenter =
       const LatLng(MapConfig.fallbackLat, MapConfig.fallbackLng);
-  LatLng _selectedPosition =
-      const LatLng(MapConfig.fallbackLat, MapConfig.fallbackLng);
-  String _currentAddress = 'Определение адреса...';
-  bool _locationLoaded = false;
+
+  /// Настоящий фикс от GPS. null — местоположение неизвестно или недоступно;
+  /// пока он null, синий маркер не рисуется вообще.
+  LatLng? _myPosition;
+
+  /// Адрес, который показываем: либо для [_myPosition], либо для центра карты,
+  /// если охранник увёл её руками. null — подписи нет, и в чипе висит причина
+  /// из [_locationStatus].
+  String? _resolvedAddress;
+
+  _LocationStatus _locationStatus = _LocationStatus.resolving;
+
+  /// Камера ходит за охранником, пока он сам её не потянул. После этого он
+  /// выбирает точку руками, и поток фиксов не должен дёргать карту обратно.
+  bool _followMe = true;
+
   bool _isAccepting = false;
   final MapController _mapController = MapController();
+
+  /// flutter_map бросает исключение на `move()` до первой отрисовки карты.
+  bool _mapReady = false;
+
+  /// Первое центрирование ставит рабочий зум, дальше уважаем зум охранника.
+  bool _hasCenteredOnce = false;
+
+  StreamSubscription<Position>? _positionSub;
+  StreamSubscription<ServiceStatus>? _serviceStatusSub;
   Timer? _reverseGeocodeDebounce;
+
+  /// Точка последнего запроса в геокодер и счётчик запросов: ответ на уехавшую
+  /// точку выбрасываем, иначе поздний ответ перезапишет свежую подпись.
+  LatLng? _lastGeocoded;
+  int _geocodeSeq = 0;
+
+  /// Не даём `_startLocation` запуститься дважды: его дёргают и возврат
+  /// приложения из фона, и поток статуса службы, и тап по чипу.
+  bool _starting = false;
+
   final Map<String, Future<String>> _callAddressFutureCache = {};
+
+  static const double _followZoom = 16.5;
+  static const double _overviewZoom = 15.0;
+
+  /// Первый фикс без ограничения по времени висел бесконечно: в помещении
+  /// high-accuracy может не прийти никогда, и подпись оставалась «Определение
+  /// адреса...» до перезапуска.
+  static const Duration _firstFixTimeout = Duration(seconds: 20);
+  static const Duration _geocodeDebounce = Duration(milliseconds: 450);
+
+  /// Шаг, с которого имеет смысл перезапрашивать адрес. Геокодер 2ГИС платный —
+  /// на каждый фикс из потока в него ходить незачем.
+  static const double _minGeocodeMoveM = 30;
 
   @override
   void initState() {
     super.initState();
-    _determinePosition();
+    WidgetsBinding.instance.addObserver(this);
+    _startLocation();
+    // Охранник может включить геолокацию, не уходя из приложения.
+    _serviceStatusSub = Geolocator.getServiceStatusStream().listen((status) {
+      if (status == ServiceStatus.enabled) {
+        _startLocation();
+      } else {
+        _setStatus(_LocationStatus.serviceDisabled);
+      }
+    }, onError: (e) => debugPrint('MapScreen: поток статуса службы: $e'));
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _reverseGeocodeDebounce?.cancel();
+    _positionSub?.cancel();
+    _serviceStatusSub?.cancel();
     _mapController.dispose();
     super.dispose();
   }
 
-  static bool _hasRequestedPermission = false;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Разрешение выдают в системных настройках — вернувшись, пробуем снова.
+    if (state == AppLifecycleState.resumed &&
+        _locationStatus != _LocationStatus.ok) {
+      _startLocation();
+    }
+  }
 
-  Future<void> _determinePosition() async {
+  /// Разрешения → мгновенный последний известный фикс → поток → свежий фикс.
+  /// На любой неудаче выставляет честный статус и НЕ подставляет резервную
+  /// точку: лучше «не удалось определить», чем чужой адрес.
+  Future<void> _startLocation() async {
+    if (_starting || !mounted) return;
+    _starting = true;
     try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied && !_hasRequestedPermission) {
-        _hasRequestedPermission = true;
-        permission = await Geolocator.requestPermission();
+      // Без сравнения здесь был бы setState синхронно из initState — Flutter
+      // ругается на markNeedsBuild во время сборки. На первом проходе статус и
+      // так resolving, так что трогать его незачем.
+      if (_locationStatus != _LocationStatus.resolving) {
+        setState(() => _locationStatus = _LocationStatus.resolving);
       }
-      if (permission == LocationPermission.deniedForever ||
-          permission == LocationPermission.denied) {
-        // Use fallback coordinates
-        _selectedPosition = _currentPosition;
-        _reverseGeocode(_selectedPosition);
+
+      // Проверки, которой здесь не было вовсе: с выключенным GPS
+      // getCurrentPosition сразу бросает, и экран уходил в резервную точку.
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        _setStatus(_LocationStatus.serviceDisabled);
         return;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
-
-      if (mounted) {
-        setState(() {
-          _currentPosition = LatLng(position.latitude, position.longitude);
-          _selectedPosition = _currentPosition;
-          _locationLoaded = true;
-        });
-        _mapController.move(_currentPosition, 16.5);
-        _reverseGeocode(_selectedPosition);
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
       }
-    } catch (e) {
-      // Fallback to default
-      _selectedPosition = _currentPosition;
-      _reverseGeocode(_selectedPosition);
+      if (permission == LocationPermission.deniedForever) {
+        _setStatus(_LocationStatus.deniedForever);
+        return;
+      }
+      if (permission == LocationPermission.denied) {
+        _setStatus(_LocationStatus.denied);
+        return;
+      }
+
+      // Последний известный фикс приходит мгновенно: карта сразу оказывается
+      // примерно там, где охранник, пока GPS ловит спутники.
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) _applyFix(last);
+      } catch (e) {
+        debugPrint('MapScreen: последний известный фикс недоступен: $e');
+      }
+
+      _listenToPositionStream();
+
+      try {
+        final fresh = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: _firstFixTimeout,
+          ),
+        );
+        _applyFix(fresh);
+      } catch (e) {
+        debugPrint('MapScreen: свежий фикс не получен: $e');
+        // Поток мог уже что-то принести — тогда статус трогать нельзя.
+        if (_myPosition == null) _setStatus(_LocationStatus.failed);
+      }
+    } finally {
+      _starting = false;
     }
+  }
+
+  /// Живой поток фиксов. Экран карты был единственным, кто читал позицию
+  /// однократно в initState: он живёт в IndexedStack, initState отрабатывает
+  /// раз за запуск приложения — и маркер с адресом навсегда застывали там, где
+  /// охранник был при старте.
+  void _listenToPositionStream() {
+    _positionSub?.cancel();
+    _positionSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 15,
+      ),
+    ).listen(
+      _applyFix,
+      onError: (e) {
+        debugPrint('MapScreen: поток геопозиции: $e');
+        if (_myPosition == null) _setStatus(_LocationStatus.failed);
+      },
+    );
+  }
+
+  void _applyFix(Position pos) {
+    if (!mounted) return;
+    final next = LatLng(pos.latitude, pos.longitude);
+    setState(() {
+      _myPosition = next;
+      _locationStatus = _LocationStatus.ok;
+      if (_followMe) _cameraCenter = next;
+    });
+    if (!_followMe) return;
+    _moveCamera(next);
+    _scheduleReverseGeocode(next);
+  }
+
+  void _setStatus(_LocationStatus status) {
+    if (!mounted) return;
+    setState(() {
+      _locationStatus = status;
+      if (status == _LocationStatus.ok) return;
+      _myPosition = null;
+      // Нет своей точки — нет и подписи: иначе на экране остаётся адрес,
+      // который уже ничего не значит. Точку, выбранную руками, не трогаем —
+      // её адрес охранник запросил сам.
+      if (_followMe) _resolvedAddress = null;
+    });
+  }
+
+  void _moveCamera(LatLng target) {
+    if (!_mapReady) return;
+    final zoom = _hasCenteredOnce ? _mapController.camera.zoom : _followZoom;
+    _hasCenteredOnce = true;
+    _mapController.move(target, zoom);
+  }
+
+  void _scheduleReverseGeocode(LatLng point) {
+    final last = _lastGeocoded;
+    if (last != null &&
+        Geolocator.distanceBetween(
+              last.latitude,
+              last.longitude,
+              point.latitude,
+              point.longitude,
+            ) <
+            _minGeocodeMoveM) {
+      return;
+    }
+    _reverseGeocodeDebounce?.cancel();
+    _reverseGeocodeDebounce = Timer(_geocodeDebounce, () {
+      if (mounted) _reverseGeocode(point);
+    });
   }
 
   Future<void> _reverseGeocode(LatLng pos) async {
     // Адрес приходит с нашего бэкенда (2ГИС, фолбэк Nominatim).
+    _lastGeocoded = pos;
+    final seq = ++_geocodeSeq;
     final label = await ReverseGeocoder.shortAddress(pos.latitude, pos.longitude);
-    if (!mounted) return;
-    if (label != null && label.isNotEmpty) {
-      setState(() => _currentAddress = label);
-    } else if (_currentAddress == 'Определение адреса...') {
-      // Геокодер недоступен — покажем координаты, а не вечное «Определение…»:
-      // для SOS точка важнее подписи.
-      setState(() => _currentAddress =
-          '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}');
-    }
+    if (!mounted || seq != _geocodeSeq) return;
+    setState(() {
+      // Геокодер недоступен — показываем координаты этой же точки, а не
+      // прошлую подпись: устаревшая улица выглядит как рабочий ответ.
+      _resolvedAddress = (label != null && label.isNotEmpty)
+          ? label
+          : '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+    });
   }
 
   void _onMapPositionChanged(MapCamera camera, bool hasGesture) {
     // When the user drags/zooms the map, treat the map CENTER as the selected location.
     if (!hasGesture) return;
     final center = camera.center;
-    setState(() => _selectedPosition = center);
-
-    _reverseGeocodeDebounce?.cancel();
-    _reverseGeocodeDebounce = Timer(const Duration(milliseconds: 450), () {
-      if (!mounted) return;
-      _reverseGeocode(center);
+    setState(() {
+      _followMe = false;
+      _cameraCenter = center;
     });
+    _lastGeocoded = null; // выбор руками геокодим всегда, без порога в 30 м
+    _reverseGeocodeDebounce?.cancel();
+    _reverseGeocodeDebounce = Timer(_geocodeDebounce, () {
+      if (mounted) _reverseGeocode(center);
+    });
+  }
+
+  /// Вернуть карту к охраннику после того, как он её потянул.
+  Future<void> _recenterOnMe() async {
+    setState(() => _followMe = true);
+    final me = _myPosition;
+    if (me == null) {
+      await _startLocation();
+      return;
+    }
+    _hasCenteredOnce = false; // вернуть рабочий зум
+    _moveCamera(me);
+    _lastGeocoded = null;
+    _scheduleReverseGeocode(me);
+  }
+
+  /// Текст чипа: адрес, когда он есть, иначе — причина, почему его нет.
+  String get _addressLabel {
+    final resolved = _resolvedAddress;
+    if (resolved != null) return resolved;
+    switch (_locationStatus) {
+      case _LocationStatus.resolving:
+        return 'Определение адреса...';
+      case _LocationStatus.serviceDisabled:
+        return 'Геолокация выключена — включить';
+      case _LocationStatus.denied:
+        return 'Нет доступа к геолокации — разрешить';
+      case _LocationStatus.deniedForever:
+        return 'Доступ к геолокации запрещён — настройки';
+      case _LocationStatus.failed:
+        return 'Не удалось определить адрес — повторить';
+      case _LocationStatus.ok:
+        return 'Определение адреса...';
+    }
+  }
+
+  bool get _addressChipIsActionable =>
+      _resolvedAddress == null &&
+      _locationStatus != _LocationStatus.resolving &&
+      _locationStatus != _LocationStatus.ok;
+
+  Future<void> _onAddressChipTap() async {
+    switch (_locationStatus) {
+      case _LocationStatus.serviceDisabled:
+        await Geolocator.openLocationSettings();
+        break;
+      case _LocationStatus.deniedForever:
+        await Geolocator.openAppSettings();
+        break;
+      case _LocationStatus.denied:
+      case _LocationStatus.failed:
+        await _startLocation();
+        break;
+      case _LocationStatus.resolving:
+      case _LocationStatus.ok:
+        break;
+    }
   }
 
   double? _asDouble(dynamic value) {
@@ -159,20 +397,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final result = await Navigator.of(context).push<_FullScreenMapResult>(
       MaterialPageRoute(
         builder: (_) => _FullScreenMapScreen(
-          initialCenter: _selectedPosition,
+          initialCenter: _myPosition ?? _cameraCenter,
           initialZoom: cam.zoom,
-          initialAddress: _currentAddress,
+          initialAddress: _resolvedAddress,
         ),
         fullscreenDialog: true,
       ),
     );
 
     if (!mounted || result == null) return;
+    // Точку выбрали руками — перестаём ходить за GPS, пока не нажмут «к себе».
     setState(() {
-      _selectedPosition = result.center;
-      _currentAddress = result.address;
+      _followMe = false;
+      _cameraCenter = result.center;
+      _resolvedAddress = result.address;
     });
-    _mapController.move(result.center, result.zoom);
+    _lastGeocoded = result.center;
+    if (_mapReady) _mapController.move(result.center, result.zoom);
   }
 
   @override
@@ -248,64 +489,88 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       FlutterMap(
                         mapController: _mapController,
                         options: MapOptions(
-                          initialCenter: _currentPosition,
-                          initialZoom: _locationLoaded ? 16.5 : 15.0,
+                          initialCenter: _cameraCenter,
+                          initialZoom:
+                              _myPosition != null ? _followZoom : _overviewZoom,
                           onPositionChanged: _onMapPositionChanged,
+                          onMapReady: () {
+                            _mapReady = true;
+                            final me = _myPosition;
+                            if (me != null && _followMe) _moveCamera(me);
+                          },
                         ),
                         children: [
                           const BaseMapLayer(),
-                          // GPS location marker (user position)
-                          MarkerLayer(
-                            markers: [
-                              Marker(
-                                point: _currentPosition,
-                                width: 44,
-                                height: 44,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: AppColors.info.withValues(alpha: 0.2),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Center(
-                                    child: Container(
-                                      width: 28,
-                                      height: 28,
-                                      decoration: const BoxDecoration(
-                                        color: AppColors.info,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.navigation,
-                                        color: Colors.white,
-                                        size: 18,
+                          // Маркер «я здесь» — только когда позиция реально
+                          // известна. На резервной точке он врал охраннику.
+                          if (_myPosition != null)
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: _myPosition!,
+                                  width: 44,
+                                  height: 44,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color:
+                                          AppColors.info.withValues(alpha: 0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: const BoxDecoration(
+                                          color: AppColors.info,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.navigation,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
                         ],
                       ),
                       // Address label
                       Positioned(
                         top: 100,
-                        left: 0,
-                        right: 0,
+                        left: 12,
+                        right: 12,
                         child: Center(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppColors.cardDark.withValues(alpha: 0.85),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              _currentAddress,
-                              style: const TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
+                          child: GestureDetector(
+                            onTap: _addressChipIsActionable
+                                ? _onAddressChipTap
+                                : null,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 6),
+                              decoration: BoxDecoration(
+                                color:
+                                    AppColors.cardDark.withValues(alpha: 0.85),
+                                borderRadius: BorderRadius.circular(20),
+                                border: _addressChipIsActionable
+                                    ? Border.all(
+                                        color: AppColors.warning
+                                            .withValues(alpha: 0.7),
+                                      )
+                                    : null,
+                              ),
+                              child: Text(
+                                _addressLabel,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: _addressChipIsActionable
+                                      ? AppColors.warning
+                                      : AppColors.textPrimary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
                           ),
@@ -328,6 +593,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               onTap: () => _zoomBy(-1),
                             ),
                           ],
+                        ),
+                      ),
+
+                      // Вернуться к себе после ручного перетаскивания карты.
+                      Positioned(
+                        left: 12,
+                        bottom: 12,
+                        child: _MapControlButton(
+                          icon: _followMe
+                              ? Icons.my_location
+                              : Icons.location_searching,
+                          onTap: _recenterOnMe,
                         ),
                       ),
 
@@ -688,7 +965,9 @@ class _MapControlButton extends StatelessWidget {
 class _FullScreenMapResult {
   final LatLng center;
   final double zoom;
-  final String address;
+
+  /// null — адрес для выбранной точки так и не определился.
+  final String? address;
 
   const _FullScreenMapResult({
     required this.center,
@@ -700,7 +979,9 @@ class _FullScreenMapResult {
 class _FullScreenMapScreen extends StatefulWidget {
   final LatLng initialCenter;
   final double initialZoom;
-  final String initialAddress;
+
+  /// Подпись, уже посчитанная на обзорной карте. null — считаем заново здесь.
+  final String? initialAddress;
 
   const _FullScreenMapScreen({
     required this.initialCenter,
@@ -716,13 +997,18 @@ class _FullScreenMapScreenState extends State<_FullScreenMapScreen> {
   final MapController _controller = MapController();
   Timer? _debounce;
   LatLng _center = const LatLng(0, 0);
-  String _address = 'Определение адреса...';
+  String? _address;
+
+  /// Ответ на уехавшую точку выбрасываем — иначе поздний ответ геокодера
+  /// перезаписывает подпись уже другого места.
+  int _geocodeSeq = 0;
 
   @override
   void initState() {
     super.initState();
     _center = widget.initialCenter;
     _address = widget.initialAddress;
+    if (_address == null) _resolve(_center);
   }
 
   @override
@@ -736,17 +1022,19 @@ class _FullScreenMapScreenState extends State<_FullScreenMapScreen> {
     if (!hasGesture) return;
     setState(() => _center = camera.center);
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 450), () async {
-      // Just keep the label responsive; no hard failure if reverse geocode fails.
-      final next = await _reverseGeocode(camera.center);
-      if (!mounted) return;
-      if (next != null) {
-        setState(() => _address = next);
-      } else if (_address == 'Определение адреса...') {
-        // Геокодер недоступен — координаты вместо вечного «Определение…».
-        setState(() => _address =
-            '${camera.center.latitude.toStringAsFixed(5)}, ${camera.center.longitude.toStringAsFixed(5)}');
-      }
+    _debounce = Timer(const Duration(milliseconds: 450), () => _resolve(camera.center));
+  }
+
+  /// Подпись для точки. Геокодер недоступен — показываем координаты ЭТОЙ точки,
+  /// а не прошлую улицу: устаревшая подпись выглядит как рабочий ответ.
+  Future<void> _resolve(LatLng point) async {
+    final seq = ++_geocodeSeq;
+    final next = await _reverseGeocode(point);
+    if (!mounted || seq != _geocodeSeq) return;
+    setState(() {
+      _address = (next != null && next.isNotEmpty)
+          ? next
+          : '${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}';
     });
   }
 
@@ -816,7 +1104,7 @@ class _FullScreenMapScreenState extends State<_FullScreenMapScreen> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    _address,
+                    _address ?? 'Определение адреса...',
                     style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 13,
