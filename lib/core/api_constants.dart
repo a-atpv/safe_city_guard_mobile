@@ -1,13 +1,11 @@
 class ApiConstants {
-  /// Хост бэкенда. Ветка 2gis по умолчанию смотрит на ТЕСТОВУЮ среду —
-  /// именно там задеплоена серверная часть перехода на 2ГИС (новый геокодинг
-  /// `guard/geocode/reverse`, маршруты через 2ГИС); на проде этих эндпоинтов
-  /// ещё нет, и адреса не резолвятся. Собрать против прода:
-  ///   flutter run --dart-define=SAFECITY_API_HOST=safe-city-back-7c8ed50edd7d.herokuapp.com
-  /// ПЕРЕД МЕРЖЕМ В MAIN: вернуть прод-хост значением по умолчанию.
+  /// Хост бэкенда. По умолчанию — прод: серверная часть перехода на 2ГИС
+  /// (геокодинг `guard/geocode/reverse`, маршруты через 2ГИС) там уже есть.
+  /// Собрать против тестовой среды:
+  ///   flutter run --dart-define=SAFECITY_API_HOST=safe-city-back-test-d2f8b35b15f0.herokuapp.com
   static const String _host = String.fromEnvironment(
     'SAFECITY_API_HOST',
-    defaultValue: 'safe-city-back-test-d2f8b35b15f0.herokuapp.com',
+    defaultValue: 'safe-city-back-7c8ed50edd7d.herokuapp.com',
   );
 
   static const String baseUrl = 'https://$_host/api/v1/';
