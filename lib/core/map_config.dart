@@ -7,19 +7,34 @@ import 'dart:convert';
 /// MapLibre в первом-лице-навигации — раньше там стоял MapTiler-стиль с так и
 /// не заполненным ключом, и навигационная карта рендерилась пустой.
 ///
-/// ВНИМАНИЕ: tile{s}.maps.2gis.com — это веб-тайлы 2ГИС, а не отдельный
-/// публичный API-продукт. Для продакшена нужен ключ/договор с dev.2gis.com
-/// и перевод экранов на нативный dgis_mobile_sdk_map (слой 2 перехода);
-/// каркас подключения — lib/core/dgis_sdk.dart.
+/// Подложка берётся из Raster Tiles API по ключу подписки. Ключ подставляется
+/// при сборке и в репозиторий не попадает:
+///
+///   flutter build apk --dart-define=SAFECITY_DGIS_TILES_KEY=<ключ>
+///
+/// Без ключа собирается прежняя веб-подложка 2ГИС: картинка та же, но запросы
+/// не идут в оплаченный пакет (и лицензией не покрыты) — это режим локальной
+/// разработки, не для релизных сборок.
 class MapConfig {
+  /// Ключ Raster Tiles API. Отдельный от серверного (Routing + Geocoder):
+  /// этот уезжает внутрь APK, откуда его может достать кто угодно, поэтому
+  /// ограничьте его в кабинете 2ГИС по идентификатору приложения.
+  static const String _tilesKey =
+      String.fromEnvironment('SAFECITY_DGIS_TILES_KEY');
+
+  /// Собрано ли приложение с оплаченной подложкой.
+  static bool get hasTilesKey => _tilesKey.isNotEmpty;
+
   /// Растровые тайлы 2ГИС для flutter_map (web-меркатор, 256 px).
-  static const String tileUrlTemplate =
-      'https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1.5';
+  static final String tileUrlTemplate = hasTilesKey
+      ? 'https://tile{s}.maps.2gis.com/v2/tiles/online_sd/{z}/{x}/{y}.png?key=$_tilesKey'
+      : 'https://tile{s}.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1.5';
 
   /// Зеркала тайл-сервера — flutter_map подставляет их в {s}.
   static const List<String> tileSubdomains = ['0', '1', '2', '3'];
 
-  /// Дальше 18-го зума растровых тайлов у 2ГИС нет — flutter_map
+  /// Дальше 18-го зума растровых тайлов у 2ГИС нет — на 19-м сервер отвечает
+  /// 204 с пустым телом (проверено на боевом ключе), поэтому flutter_map
   /// растягивает 18-й вместо пустых клеток.
   static const int tileMaxNativeZoom = 18;
 
@@ -44,7 +59,7 @@ class MapConfig {
         'type': 'raster',
         'tiles': [
           for (final s in tileSubdomains)
-            'https://tile$s.maps.2gis.com/tiles?x={x}&y={y}&z={z}&v=1.5',
+            tileUrlTemplate.replaceFirst('{s}', s),
         ],
         'tileSize': 256,
         'maxzoom': tileMaxNativeZoom,
