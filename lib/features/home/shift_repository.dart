@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import '../../core/api_client.dart';
 import '../../core/api_constants.dart';
@@ -38,16 +37,9 @@ class ShiftRepository {
     }
   }
 
-  Future<void> updateLocation(double latitude, double longitude) async {
-    try {
-      await _dio.post(ApiConstants.location, data: {
-
-        'latitude': latitude,
-        'longitude': longitude,
-      });
-    } catch (e) {
-      // Ignore location update errors to not spam the UI
-      debugPrint('Failed to update location to backend: $e');
-    }
-  }
+  // updateLocation удалён сознательно: мёртвый код, но заряженный — он
+  // отправлял в /guard/location произвольные координаты вызывающего и глотал
+  // все ошибки. Однажды его уже кормили точкой с fallback-инициализацией.
+  // Координаты на бэкенд шлёт только слой трекинга (GuardLocationTracker),
+  // у которого источник — исключительно реальные фиксы GPS.
 }

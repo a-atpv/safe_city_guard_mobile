@@ -42,10 +42,38 @@ class GeolocatorLocationService implements GuardLocationTracker {
   /// no point spending an upload on one. Mirrors `GuardService.MAX_LOCATION_ACCURACY_M`.
   static const double _maxAccuracyM = 100;
 
+  /// Почему трекинг сейчас невозможен — или null, когда всё готово.
+  ///
+  /// Текст показывается охраннику как есть, поэтому по-русски. Вынесено в
+  /// статику: контроллер смены задаёт тот же вопрос ДО выхода на смену —
+  /// смена без геолокации бессмысленна (диспетчер не видит охранника) и
+  /// опасна (бэкенд держит его последнюю точку любой давности).
+  static Future<String?> availabilityProblem({bool request = false}) async {
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      return 'геолокация на устройстве выключена';
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied && request) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied) {
+      return 'приложению не разрешена геолокация';
+    }
+    if (permission == LocationPermission.deniedForever) {
+      return 'доступ к геолокации запрещён — включите его в настройках приложения';
+    }
+    // "while in use" достаточно: foreground service покрывает фон (см. шапку).
+    return null;
+  }
+
   @override
-  Future<void> start() async {
-    if (_running) return;
-    if (!await _ensurePermission()) return;
+  Future<bool> start() async {
+    if (_running) return true;
+    final problem = await availabilityProblem(request: true);
+    if (problem != null) {
+      debugPrint('GeolocatorLocationService: не запущен — $problem');
+      return false;
+    }
     _running = true;
 
     await _positionSub?.cancel();
@@ -63,6 +91,7 @@ class GeolocatorLocationService implements GuardLocationTracker {
 
     // Emit one fix now so we don't wait up to 60 s / first movement for a fix.
     unawaited(_tick());
+    return true;
   }
 
   @override
@@ -73,30 +102,6 @@ class GeolocatorLocationService implements GuardLocationTracker {
     await _positionSub?.cancel(); // also tears down the foreground service
     _positionSub = null;
     _pending = null;
-  }
-
-  /// Ensures location services are on and permission is granted. With the
-  /// foreground service, "while in use" is enough for background delivery on
-  /// Android; "Always" is still preferred (set in the A70 provisioning checklist).
-  Future<bool> _ensurePermission() async {
-    if (!await Geolocator.isLocationServiceEnabled()) {
-      debugPrint('GeolocatorLocationService: location services disabled');
-      return false;
-    }
-    var perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) {
-      perm = await Geolocator.requestPermission();
-    }
-    if (perm == LocationPermission.denied ||
-        perm == LocationPermission.deniedForever) {
-      debugPrint('GeolocatorLocationService: location permission denied ($perm)');
-      return false;
-    }
-    if (perm == LocationPermission.whileInUse) {
-      debugPrint('GeolocatorLocationService: only "while in use" granted — '
-          'foreground service still covers background, but grant "Always" for headroom');
-    }
-    return true;
   }
 
   Future<void> _tick() async {
@@ -125,10 +130,15 @@ class GeolocatorLocationService implements GuardLocationTracker {
     final pos = _pending;
     if (pos == null) return;
     try {
+      // Возраст фикса на момент отправки: ретрай из _pending может уйти сильно
+      // позже, чем фикс был снят, и без возраста сервер счёл бы устаревшую
+      // точку свежей (штамп у него — момент получения запроса).
+      final ageMs = DateTime.now().difference(pos.timestamp).inMilliseconds;
       await ApiClient.instance.post(ApiConstants.location, data: {
         'latitude': pos.latitude,
         'longitude': pos.longitude,
         'accuracy': pos.accuracy,
+        'fix_age_ms': ageMs < 0 ? 0 : ageMs,
       });
       // Only clear if a newer fix hasn't replaced it while we awaited the POST.
       if (identical(_pending, pos)) _pending = null;

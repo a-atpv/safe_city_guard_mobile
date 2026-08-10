@@ -418,6 +418,23 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Ошибки смены до сих пор никто не показывал: state.error выставлялся, но
+    // ни один экран его не читал — «не удалось выйти на смену» и «геолокация
+    // не передаётся» умирали молча.
+    ref.listen(shiftControllerProvider, (previous, next) {
+      final error = next.error;
+      if (error != null && error != previous?.error) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: AppColors.danger,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+        ref.read(shiftControllerProvider.notifier).clearError();
+      }
+    });
+
     final shiftState = ref.watch(shiftControllerProvider);
     final isOnDuty = shiftState.isOnline;
     final isLoadingShift = shiftState.isLoading;
@@ -863,8 +880,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           await ref.read(callControllerProvider.notifier).acceptCall(callId);
                         } catch (e) {
                           if (!mounted) return;
+                          // extractError уже вернул человеческий текст (в т.ч.
+                          // message структурированных ошибок гео-гейта) —
+                          // остаётся снять обёртку Exception.
+                          final message =
+                              e.toString().replaceFirst('Exception: ', '');
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Ошибка при принятии вызова: $e')),
+                            SnackBar(
+                              content: Text(message),
+                              backgroundColor: AppColors.danger,
+                              duration: const Duration(seconds: 6),
+                            ),
                           );
                           return;
                         } finally {

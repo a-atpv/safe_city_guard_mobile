@@ -22,16 +22,6 @@ class RouteService {
     return CallRouteData.fromJson(response.data);
   }
 
-  /// Quick ETA only (lightweight, for showing ETA before accepting)
-  Future<int> getETA(double destLat, double destLng) async {
-    final response = await _dio.get(
-      ApiConstants.routeEta,
-
-      queryParameters: {'dest_lat': destLat, 'dest_lng': destLng},
-    );
-    return response.data['eta_minutes'] as int;
-  }
-
   /// Calculate standalone route
   Future<RouteData> calculateRoute({
     required double originLat,

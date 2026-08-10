@@ -88,7 +88,7 @@ class ShiftController extends Notifier<ShiftState> with WidgetsBindingObserver {
       state = state.copyWith(isOnline: isOnline, isLoading: false);
 
       if (isOnline) {
-        _onGoingOnline();
+        await _onGoingOnline();
       } else {
         _onGoingOffline();
       }
@@ -102,13 +102,30 @@ class ShiftController extends Notifier<ShiftState> with WidgetsBindingObserver {
     state = state.copyWith(isLoading: true, error: null);
     try {
       if (value) {
+        // Геолокация — ДО выхода на смену. Смена без неё бессмысленна
+        // (диспетчер не видит охранника и не назначит ему вызов) и опасна:
+        // бэкенд продолжает верить последней известной точке, где бы и когда
+        // бы она ни была снята. Раньше проверка молча проваливалась уже после
+        // старта смены — охранник видел «На смене» и не знал, что для сервера
+        // он всё ещё в точке недельной давности.
+        final problem = await GeolocatorLocationService.availabilityProblem(
+          request: true,
+        );
+        if (problem != null) {
+          state = state.copyWith(
+            isLoading: false,
+            error: 'Нельзя выйти на смену: $problem.',
+          );
+          return;
+        }
         await _repository.startShift();
-        _onGoingOnline();
+        state = state.copyWith(isOnline: true, isLoading: false);
+        await _onGoingOnline();
       } else {
         await _repository.endShift();
+        state = state.copyWith(isOnline: false, isLoading: false);
         _onGoingOffline();
       }
-      state = state.copyWith(isOnline: value, isLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString().replaceFirst('Exception: ', ''));
     }
@@ -118,8 +135,18 @@ class ShiftController extends Notifier<ShiftState> with WidgetsBindingObserver {
     state = state.copyWith(error: null);
   }
 
-  void _onGoingOnline() {
-    _startLocationTracking();
+  Future<void> _onGoingOnline() async {
+    final started = await _startLocationTracking();
+    if (!started) {
+      // Смена уже идёт (или шла до перезапуска приложения) — не роняем её,
+      // но и не молчим: без этого баннера охранник «На смене» неделями может
+      // не знать, что сервер его не видит.
+      state = state.copyWith(
+        error: 'Смена активна, но геолокация не передаётся — проверьте, что '
+            'GPS включён и приложению разрешена геолокация. Пока сервер не '
+            'видит вашу позицию, вызовы вам не назначаются.',
+      );
+    }
     webSocketServiceProvider.connect();
     ref.read(callControllerProvider.notifier).startPolling();
   }
@@ -130,15 +157,17 @@ class ShiftController extends Notifier<ShiftState> with WidgetsBindingObserver {
     ref.read(callControllerProvider.notifier).stopPolling();
   }
 
-  void _startLocationTracking() {
+  Future<bool> _startLocationTracking() async {
     _locationService ??=
         kUseFreeLocationStack ? GeolocatorLocationService() : LocationService();
-    // Fire-and-forget: the background SDK persists and uploads fixes natively
-    // (even when the app is killed), so we don't block the UI on it — just log
-    // a startup failure.
-    _locationService!.start().catchError(
-      (e) => debugPrint('LocationService.start failed: $e'),
-    );
+    // Раньше — fire-and-forget с проглоченной ошибкой: провал запуска
+    // трекинга был неотличим от успеха. Теперь ждём и сообщаем результат.
+    try {
+      return await _locationService!.start();
+    } catch (e) {
+      debugPrint('LocationService.start failed: $e');
+      return false;
+    }
   }
 
   void _stopLocationTracking() {

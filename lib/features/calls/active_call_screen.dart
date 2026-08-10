@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -30,6 +31,13 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
     with SingleTickerProviderStateMixin {
   CallRouteData? _callRoute;
   bool _isLoading = true;
+
+  /// Конкретная причина отсутствия маршрута, когда сервер её назвал.
+  /// Коды MISSING_/STALE_GUARD_LOCATION — контракт с бэкендом
+  /// (routing.py). Раньше оба глотались, и охранник видел одинаковое
+  /// «Маршрут недоступен» что при упавшем 2ГИС, что при выключенном GPS —
+  /// а лечатся они противоположно.
+  String? _routeErrorMessage;
   Timer? _refreshTimer;
   Timer? _elapsedTimer;
   Duration _elapsed = Duration.zero;
@@ -289,6 +297,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
         setState(() {
           _callRoute = data;
           _isLoading = false;
+          _routeErrorMessage = null;
           // Пуш по вебсокету приходит чаще, чем перезагружается маршрут, поэтому
           // серверным возрастом перебиваем только если он свежее локального.
           final age = data.userLocationAgeSeconds;
@@ -355,7 +364,10 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
     } catch (e) {
       debugPrint('Route loading failed: $e');
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _routeErrorMessage = _describeRouteError(e);
+        });
 
         // Even on error, redirect to chat as a fallback communication channel
         if (!_hasAutoRedirected) {
@@ -364,6 +376,23 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
         }
       }
     }
+  }
+
+  /// Человеческое объяснение отказа маршрута по коду бэкенда, null — причина
+  /// не геолокационная (сеть, упавший роутинг) и хватит общего баннера.
+  String? _describeRouteError(Object e) {
+    if (e is! DioException) return null;
+    final data = e.response?.data;
+    final detail = data is Map ? data['detail'] : null;
+    switch (detail) {
+      case 'MISSING_GUARD_LOCATION':
+        return 'Сервер не знает вашу позицию — проверьте, что GPS включён и '
+            'приложению разрешена геолокация.';
+      case 'STALE_GUARD_LOCATION':
+        return 'Ваша позиция на сервере устарела — проверьте GPS. Маршрут '
+            'появится после первой свежей координаты.';
+    }
+    return null;
   }
 
   // Ask the guard to confirm before ending the call. The guard may instead
@@ -605,7 +634,11 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
             ),
 
           // ===== ERROR BANNER if route failed =====
-          if (_callRoute == null && activeCall != null)
+          // Не только до первой загрузки: GPS может отвалиться посреди вызова,
+          // и тогда _callRoute уже есть (старая полилиния), а причину отказа
+          // свежего маршрута всё равно нужно показать.
+          if ((_callRoute == null || _routeErrorMessage != null) &&
+              activeCall != null)
             Positioned(
               top: MediaQuery.of(context).padding.top + 60,
               left: 20,
@@ -757,14 +790,18 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
         color: Colors.orange.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
-          SizedBox(width: 10),
+          const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Маршрут недоступен. Используйте чат для связи.',
-              style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+              _routeErrorMessage ??
+                  'Маршрут недоступен. Используйте чат для связи.',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500),
             ),
           ),
         ],

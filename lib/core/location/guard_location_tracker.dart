@@ -8,7 +8,13 @@
 ///    (backgrounded-only; on trial for the dedicated Samsung A70 fleet).
 abstract interface class GuardLocationTracker {
   /// Start (or resume) background tracking for an on-duty guard.
-  Future<void> start();
+  ///
+  /// Возвращает true, только если трекинг реально запущен. Раньше провал
+  /// (выключенный GPS, отобранное разрешение, отсутствующий токен) глотался
+  /// молча — охранник числился «На смене», ни один фикс не уходил, и бэкенд
+  /// держал его последнюю известную точку любой давности. Именно так вызов из
+  /// Астаны получил маршрут из Актобе.
+  Future<bool> start();
 
   /// Stop background tracking (guard went off-shift).
   Future<void> stop();

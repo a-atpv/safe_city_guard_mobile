@@ -213,7 +213,15 @@ class ApiClient {
     if (e is DioException) {
       final data = e.response?.data;
       if (data is Map && data['detail'] != null) {
-        return data['detail'].toString();
+        final detail = data['detail'];
+        // Структурированные ошибки бэкенда ({code, message, ...} — контракт
+        // outside_service_area, guard_too_far_from_call и т.п.): человеку
+        // показываем message, а не Map.toString().
+        if (detail is Map) {
+          final message = detail['message'];
+          if (message is String && message.isNotEmpty) return message;
+        }
+        return detail.toString();
       }
       if (data is String && data.isNotEmpty) {
         return data;

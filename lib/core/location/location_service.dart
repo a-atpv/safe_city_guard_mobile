@@ -84,11 +84,11 @@ class LocationService implements GuardLocationTracker {
   /// Start (or resume) background tracking. Safe to call repeatedly: on later
   /// calls it just refreshes the auth token and re-starts the SDK.
   @override
-  Future<void> start() async {
+  Future<bool> start() async {
     final authorization = await _buildAuthorization();
     if (authorization == null) {
       debugPrint('LocationService: no access token — cannot start tracking');
-      return;
+      return false;
     }
 
     if (!_ready) {
@@ -169,6 +169,7 @@ class LocationService implements GuardLocationTracker {
     }
 
     await bg.BackgroundGeolocation.start();
+    return true;
   }
 
   /// Stop background tracking (guard went off-shift).
