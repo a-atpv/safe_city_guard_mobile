@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/app_colors.dart';
+import '../../core/update/update_prompt.dart';
 import '../map/map_screen.dart';
 import '../incidents/incidents_list_screen.dart';
 import '../profile/profile_screen.dart';
@@ -21,6 +22,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     IncidentsListScreen(),
     ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Начало смены — единственный спокойный момент: вызова ещё нет, диалог
+    // ничего не перекрывает.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) UpdatePrompt.maybeShow(context);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
