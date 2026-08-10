@@ -150,11 +150,21 @@ class _IncidentCard extends StatelessWidget {
     }
   }
 
+  /// Время вызова, а для вызовов не за сегодня — ещё и дата. Одно время суток
+  /// в списке за все дни читалось как беспорядок: 04:42 стояло выше 15:15,
+  /// потому что это разные дни, а по строке этого было не видно.
   String _timeFromCreatedAt(String createdAt) {
     if (createdAt.isEmpty) return '';
     try {
-      final dt = DateTime.parse(createdAt);
-      return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      final dt = DateTime.parse(createdAt).toLocal();
+      final hm = '${dt.hour.toString().padLeft(2, '0')}:'
+          '${dt.minute.toString().padLeft(2, '0')}';
+      final now = DateTime.now();
+      final isToday =
+          dt.year == now.year && dt.month == now.month && dt.day == now.day;
+      if (isToday) return hm;
+      return '${dt.day.toString().padLeft(2, '0')}.'
+          '${dt.month.toString().padLeft(2, '0')} $hm';
     } catch (_) {
       return '';
     }
@@ -177,8 +187,14 @@ class _IncidentCard extends StatelessWidget {
     final status = (call['status'] as String?) ?? 'unknown';
     final statusColor = _statusColor(status);
 
+    // Адрес лежит в корне ответа; `location.address` читаем следом — так же,
+    // как на других экранах. Раньше здесь смотрели только в `location`, которого
+    // в ответе нет, и в каждой строке истории стояло «—».
+    final addressRaw = (call['address'] as String?)?.trim().isNotEmpty == true
+        ? (call['address'] as String).trim()
+        : (call['location']?['address'] as String?)?.trim();
     final address =
-        (call['location']?['address'] as String?)?.trim() ?? '—';
+        (addressRaw == null || addressRaw.isEmpty) ? '—' : addressRaw;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
