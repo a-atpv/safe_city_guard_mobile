@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_colors.dart';
-import '../../core/map_config.dart';
+import '../../core/basemap.dart';
 import '../calls/call_controller.dart';
 
 class IncidentDetailScreen extends ConsumerStatefulWidget {
@@ -41,10 +41,14 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
       );
     }
 
+    // Координаты может не прислать (старые записи истории). Тогда карту не
+    // рисуем вовсе: метка по координатам города-заглушки выглядит как точное
+    // место вызова, и охранник верит не тому двору.
     final latNum = call['latitude'] ?? call['location']?['latitude'];
-    final lat = latNum is num ? latNum.toDouble() : 51.1282;
     final lngNum = call['longitude'] ?? call['location']?['longitude'];
-    final lng = lngNum is num ? lngNum.toDouble() : 71.4307;
+    final LatLng? point = (latNum is num && lngNum is num)
+        ? LatLng(latNum.toDouble(), lngNum.toDouble())
+        : null;
     final status = call['status'] ?? 'pending';
     final callId = call['id'].toString();
 
@@ -172,28 +176,24 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
                       borderRadius: BorderRadius.circular(16),
                       child: SizedBox(
                         height: 200,
-                        child: FlutterMap(
+                        child: point == null
+                            ? const _NoCoordinatesPlaceholder()
+                            : FlutterMap(
                           options: MapOptions(
-                            initialCenter: LatLng(lat, lng),
+                            initialCenter: point,
                             initialZoom: 15.0,
                             interactionOptions: const InteractionOptions(
                               flags: InteractiveFlag.none,
                             ),
                           ),
                           children: [
-                            TileLayer(
-                              urlTemplate: MapConfig.tileUrlTemplate,
-                              subdomains: MapConfig.tileSubdomains,
-                              maxNativeZoom: MapConfig.tileMaxNativeZoom,
-                              userAgentPackageName: 'com.safecity.guard',
-                            ),
-                            const SimpleAttributionWidget(
-                              source: Text(MapConfig.attributionSource),
-                            ),
+                            // Плашку повтора не показываем: карточка мелкая,
+                            // а инцидент читается и без подложки.
+                            const BaseMapLayer(showRetry: false),
                             MarkerLayer(
                               markers: [
                                 Marker(
-                                  point: LatLng(lat, lng),
+                                  point: point,
                                   width: 40,
                                   height: 40,
                                   child: Container(
@@ -231,12 +231,9 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
                         'Адрес',
                         call['address'] ?? call['location']?['address'] ?? 'Адрес не указан'),
                     _buildInfoRow(
-                        Icons.access_time, 
-                        'Время', 
-                        (() {
-                          final createdAt = call['created_at']?.toString() ?? '';
-                          return createdAt.length >= 16 ? createdAt.substring(11, 16) : createdAt;
-                        })()),
+                        Icons.access_time,
+                        'Время',
+                        _formatCreatedAt(call['created_at']?.toString() ?? '')),
                     _buildInfoRow(
                         Icons.info_outline, 'Статус', status,
                         valueColor: _getStatusColor(status)),
@@ -434,6 +431,23 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
     }
   }
 
+  /// Время вызова в местном поясе; для вызова не за сегодня — с датой. Раньше
+  /// здесь резали ISO-строку по символам: показывалось UTC-время без даты, и
+  /// вчерашний вызов было не отличить от сегодняшнего.
+  String _formatCreatedAt(String createdAt) {
+    if (createdAt.isEmpty) return '—';
+    final dt = DateTime.tryParse(createdAt)?.toLocal();
+    if (dt == null) return createdAt;
+    final hm = '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}';
+    final now = DateTime.now();
+    if (dt.year == now.year && dt.month == now.month && dt.day == now.day) {
+      return hm;
+    }
+    return '${dt.day.toString().padLeft(2, '0')}.'
+        '${dt.month.toString().padLeft(2, '0')}.${dt.year} $hm';
+  }
+
   Widget _buildInfoRow(IconData icon, String label, String value,
       {Color? valueColor}) {
     return Padding(
@@ -467,4 +481,29 @@ class _IncidentDetailScreenState extends ConsumerState<IncidentDetailScreen> {
       ),
     );
   }
+}
+
+/// Заглушка вместо карты, когда координат вызова нет. Честнее пустого места:
+/// охранник видит, что точка не пришла, а не метку в случайном месте.
+class _NoCoordinatesPlaceholder extends StatelessWidget {
+  const _NoCoordinatesPlaceholder();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        color: AppColors.cardDark,
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.location_off_outlined,
+                  color: AppColors.textHint, size: 28),
+              SizedBox(height: 8),
+              Text(
+                'Координаты вызова не переданы',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      );
 }

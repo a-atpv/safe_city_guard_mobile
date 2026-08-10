@@ -9,6 +9,7 @@ import 'package:flutter_background_geolocation/flutter_background_geolocation.da
 import 'core/app_theme.dart';
 import 'core/app_colors.dart';
 import 'core/location/location_service.dart';
+import 'core/map_config.dart';
 import 'core/notifications/push_notification_service.dart';
 import 'core/router/app_router.dart';
 import 'features/auth/auth_controller.dart';
@@ -57,6 +58,10 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // Релиз без ключа подложки — след в логе устройства, а не молчание: именно
+  // так в TestFlight уехала сборка с неоплаченными тайлами и серой картой.
+  MapConfig.warnIfUnlicensed();
 
   runApp(const ProviderScope(child: MyApp()));
 }

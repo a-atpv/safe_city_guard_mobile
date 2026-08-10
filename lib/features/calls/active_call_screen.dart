@@ -14,7 +14,7 @@ import 'call_repository.dart';
 import 'call_controller.dart';
 import 'call_offer_listener.dart';
 import '../../core/app_colors.dart';
-import '../../core/map_config.dart';
+import '../../core/basemap.dart';
 import '../../core/services/reverse_geocoder.dart';
 import '../../core/websocket/websocket_service.dart';
 
@@ -832,15 +832,7 @@ class _ActiveCallScreenState extends ConsumerState<ActiveCallScreen>
       ),
       children: [
         // ── 2ГИС tile layer (matches the map preview) ──
-        TileLayer(
-          urlTemplate: MapConfig.tileUrlTemplate,
-          subdomains: MapConfig.tileSubdomains,
-          maxNativeZoom: MapConfig.tileMaxNativeZoom,
-          userAgentPackageName: 'kz.safecity.guard',
-        ),
-        const SimpleAttributionWidget(
-          source: Text(MapConfig.attributionSource),
-        ),
+        const BaseMapLayer(),
 
         // ── Route polyline (the blue line) ──
         if (polylinePoints.isNotEmpty)

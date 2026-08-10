@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_colors.dart';
+import '../../core/basemap.dart';
 import '../../core/map_config.dart';
 import '../../core/services/reverse_geocoder.dart';
 import '../home/shift_controller.dart';
@@ -20,8 +21,12 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
-  LatLng _currentPosition = const LatLng(51.1282, 71.4307); // fallback: Astana
-  LatLng _selectedPosition = const LatLng(51.1282, 71.4307);
+  // До первого фикса камера стоит над Актобе — городом, который обслуживаем.
+  // Раньше здесь была Астана, и охранник в Актобе успевал увидеть чужой город.
+  LatLng _currentPosition =
+      const LatLng(MapConfig.fallbackLat, MapConfig.fallbackLng);
+  LatLng _selectedPosition =
+      const LatLng(MapConfig.fallbackLat, MapConfig.fallbackLng);
   String _currentAddress = 'Определение адреса...';
   bool _locationLoaded = false;
   bool _isAccepting = false;
@@ -248,15 +253,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           onPositionChanged: _onMapPositionChanged,
                         ),
                         children: [
-                          TileLayer(
-                            urlTemplate: MapConfig.tileUrlTemplate,
-                            subdomains: MapConfig.tileSubdomains,
-                            maxNativeZoom: MapConfig.tileMaxNativeZoom,
-                            userAgentPackageName: 'com.safecity.guard',
-                          ),
-                          const SimpleAttributionWidget(
-                            source: Text(MapConfig.attributionSource),
-                          ),
+                          const BaseMapLayer(),
                           // GPS location marker (user position)
                           MarkerLayer(
                             markers: [
@@ -784,15 +781,7 @@ class _FullScreenMapScreenState extends State<_FullScreenMapScreen> {
                 onPositionChanged: _onPositionChanged,
               ),
               children: [
-                TileLayer(
-                  urlTemplate: MapConfig.tileUrlTemplate,
-                  subdomains: MapConfig.tileSubdomains,
-                  maxNativeZoom: MapConfig.tileMaxNativeZoom,
-                  userAgentPackageName: 'com.safecity.guard',
-                ),
-                const SimpleAttributionWidget(
-                  source: Text(MapConfig.attributionSource),
-                ),
+                const BaseMapLayer(),
               ],
             ),
             Positioned(
