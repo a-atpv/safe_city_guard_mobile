@@ -1,0 +1,5 @@
+{
+  "_comment": "Скопировать в dart_defines.json (он в .gitignore) и вписать ключи. Используется scripts/build_release.sh.",
+  "SAFECITY_DGIS_TILES_KEY": "ключ-2gis-raster-tiles-api",
+  "SAFECITY_API_HOST": "safe-city-back-7c8ed50edd7d.herokuapp.com"
+}

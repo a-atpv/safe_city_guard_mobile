@@ -30,6 +30,32 @@ samples, guidance on mobile development, and a full API reference.
 - Маршруты к вызову бэкенд строит через 2GIS Routing API (пробки, русские
   инструкции) с фолбэком на OSRM — приложение изменений не требует.
 
+### Релизная сборка: только через скрипт
+
+Ключ подложки (Raster Tiles API) попадает в приложение только через
+`--dart-define`, и собранная без него сборка **выглядит точно так же**: та же
+картинка, но запросы идут в бесплатный веб-эндпоинт 2ГИС — не по подписке, не
+по лицензии и без гарантии, что тайлы будут отдавать и завтра. Именно так в
+TestFlight уехала сборка, у которой карта у охранника оказалась пустым серым
+прямоугольником.
+
+Поэтому ключи лежат в `dart_defines.json` (в `.gitignore`, шаблон —
+`dart_defines.example.json`), а собирать релиз надо так:
+
+```bash
+./scripts/build_release.sh ipa        # iOS для TestFlight/App Store
+./scripts/build_release.sh apk        # Android
+./scripts/build_release.sh config     # если архив делается из Xcode:
+                                      # пишет ключи в ios/Flutter/Generated.xcconfig,
+                                      # запускать перед каждым Product → Archive
+```
+
+Скрипт отказывается собирать релиз, если `SAFECITY_DGIS_TILES_KEY` не задан.
+Сборка без ключа вдобавок пишет предупреждение в лог устройства на старте
+(`MapConfig.warnIfUnlicensed`), а если тайлы не приходят, на карте появляется
+плашка «Карта не загрузилась. Повторить», и в логе — адрес тайла с причиной
+(`lib/core/basemap.dart`).
+
 ### Этап 2: нативный 2GIS Mobile SDK
 
 Когда будет получен ключ Mobile SDK (файл `dgissdk.key` из кабинета
