@@ -58,6 +58,9 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+            // proguardFile (append), а не proguardFiles: плагин Flutter уже
+            // подложил свои default-правила, их нельзя затирать.
+            proguardFile("proguard-rules.pro")
         }
     }
 }

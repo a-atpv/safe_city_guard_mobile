@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -123,11 +124,23 @@ class CallOfferListener {
       // background isolate may have already posted so the two do not overlap.
       SosSiren.cancelNotification();
       SosSiren.startInApp();
+    } else {
+      // Свёрнуто, но сокет жив. Раньше сирена здесь доверялась FCM-пушу, и это
+      // была дыра: приёмник firebase_messaging решает «на переднем ли плане
+      // приложение» по importance процесса и на свёрнутом приложении регулярно
+      // ошибается — тогда сообщение уезжает в LiveData под неактивного
+      // наблюдателя и лежит там до возобновления активности, а следующий пуш
+      // его ещё и перезаписывает (наблюдали на Samsung A51, 2026-08-12).
+      // Поэтому уведомление с сиреной постим сами, не дожидаясь пуша: id
+      // фиксированный, так что если фоновый обработчик всё же дорисует своё,
+      // оно заменит это же уведомление, а не задвоит сирену.
+      unawaited(SosSiren.showNotification(
+        title: '🚨 Экстренный вызов!',
+        body: offer['address']?.toString() ??
+            'Нужна ваша помощь. Откройте приложение и примите вызов.',
+        payload: jsonEncode(offer),
+      ));
     }
-    // Backgrounded but the socket is still alive: leave the siren to the
-    // notification posted from the push handler — it survives the app being
-    // killed, the in-app player does not. The lifecycle listener above takes
-    // over the moment the guard opens the app.
 
     // Show Bottom Sheet using the root navigator key
     final context = rootNavigatorKey.currentContext;

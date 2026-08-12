@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -26,7 +25,7 @@ import 'sos_siren.dart';
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final Map<String, dynamic> data = message.data;
   final String? type = data['type']?.toString();
-  log('Handling a background message: ${message.messageId} (type=$type)');
+  debugPrint('Handling a background message: ${message.messageId} (type=$type)');
 
   if (!kSosPushTypes.contains(type)) {
     // The call is over (user cancelled, someone else closed it) while the app
@@ -42,7 +41,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   } catch (e) {
-    log('Background handler: Firebase already initialized or failed: $e');
+    debugPrint('Background handler: Firebase already initialized or failed: $e');
   }
 
   await SosSiren.showNotification(
@@ -94,13 +93,13 @@ class PushNotificationService {
       // data-сообщений от разрешения POST_NOTIFICATIONS не зависит — запрещён
       // только показ. Продолжаем: токен уедет на бэкенд, SOS-пуш дойдёт, и,
       // пока приложение открыто, сирена всё равно прозвучит.
-      log('Push Notifications: Permission DENIED — уведомления показывать '
+      debugPrint('Push Notifications: Permission DENIED — уведомления показывать '
           'нельзя, сирена в фоне не прозвучит. Инициализацию продолжаем: '
           'доставка data-сообщений от этого разрешения не зависит.');
     } else if (settings.authorizationStatus == AuthorizationStatus.provisional) {
-      log('Push Notifications: Permission PROVISIONAL (quiet)');
+      debugPrint('Push Notifications: Permission PROVISIONAL (quiet)');
     } else {
-      log('Push Notifications: Permission GRANTED');
+      debugPrint('Push Notifications: Permission GRANTED');
     }
 
     // 2. Local Notifications Setup (for showing foreground alerts)
@@ -157,7 +156,7 @@ class PushNotificationService {
 
     // 5. Handle Foreground Messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      log('Received foreground message: ${message.notification?.title}');
+      debugPrint('Received foreground message: ${message.notification?.title}');
 
       final String? type = message.data['type']?.toString();
       if (kSosPushTypes.contains(type)) {
@@ -177,14 +176,14 @@ class PushNotificationService {
 
     // 6. Handle notification taps when app is in background but opened
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      log('Notification opened app: ${message.data}');
+      debugPrint('Notification opened app: ${message.data}');
       _handleNotificationPayload(message.data);
     });
 
     // 7. Check if the app was launched from a terminated state via a notification
     RemoteMessage? initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
-      log('App launched from terminated state via FCM notification');
+      debugPrint('App launched from terminated state via FCM notification');
       _handleNotificationPayload(initialMessage.data);
     }
 
@@ -194,18 +193,18 @@ class PushNotificationService {
     if (launchDetails?.didNotificationLaunchApp ?? false) {
       final payload = launchDetails?.notificationResponse?.payload;
       if (payload != null) {
-        log('App launched from terminated state via Local Notification');
+        debugPrint('App launched from terminated state via Local Notification');
         try {
           final data = jsonDecode(payload) as Map<String, dynamic>;
           _handleNotificationPayload(data);
         } catch (e) {
-          log('Error decoding local notification payload: $e');
+          debugPrint('Error decoding local notification payload: $e');
         }
       }
     }
 
     _isInitialized = true;
-    log('PushNotificationService initialized');
+    debugPrint('PushNotificationService initialized');
     
     // Proactively get token to ensure we have it
     final token = await getFcmToken();
@@ -215,7 +214,7 @@ class PushNotificationService {
 
     // 8. Listen for token refreshes
     _fcm.onTokenRefresh.listen((newToken) {
-      log('Push Notifications: Token refreshed');
+      debugPrint('Push Notifications: Token refreshed');
       _onTokenCallback?.call(newToken);
     });
   }
@@ -238,9 +237,9 @@ class PushNotificationService {
       if (prefs.getBool(_fullScreenIntentAskedKey) ?? false) return;
       await prefs.setBool(_fullScreenIntentAskedKey, true);
       final granted = await android.requestFullScreenIntentPermission();
-      log('Push Notifications: full-screen intent permission granted=$granted');
+      debugPrint('Push Notifications: full-screen intent permission granted=$granted');
     } catch (e) {
-      log('Push Notifications: alert permission request failed: $e');
+      debugPrint('Push Notifications: alert permission request failed: $e');
     }
   }
 
@@ -263,36 +262,36 @@ class PushNotificationService {
     try {
       // On iOS, we must wait for the APNS token to be available
       if (Platform.isIOS) {
-        log('Push Notifications: Checking APNS status...');
+        debugPrint('Push Notifications: Checking APNS status...');
         String? apnsToken = await _fcm.getAPNSToken();
         if (apnsToken == null) {
-          log('Push Notifications: APNS token not yet available. Retrying...');
+          debugPrint('Push Notifications: APNS token not yet available. Retrying...');
           // Give it a few attempts
           for (int i = 0; i < 5; i++) {
             await Future.delayed(Duration(seconds: 2 * (i + 1)));
             apnsToken = await _fcm.getAPNSToken();
             if (apnsToken != null) break;
-            log('Push Notifications: APNS retry ${i + 1} failed...');
+            debugPrint('Push Notifications: APNS retry ${i + 1} failed...');
           }
         }
         
         if (apnsToken != null) {
-          log('Push Notifications: APNS Token Success: $apnsToken');
+          debugPrint('Push Notifications: APNS Token Success: $apnsToken');
         } else {
-          log('Push Notifications: APNS Token ERROR: Still null after retries. FCM will likely fail.');
+          debugPrint('Push Notifications: APNS Token ERROR: Still null after retries. FCM will likely fail.');
         }
       }
 
-      log('Push Notifications: Requesting FCM Token...');
+      debugPrint('Push Notifications: Requesting FCM Token...');
       String? token = await _fcm.getToken();
       if (token != null) {
-        log('Push Notifications: FCM Token Success: $token');
+        debugPrint('Push Notifications: FCM Token Success: $token');
       } else {
-        log('Push Notifications: FCM Token ERROR: Received null');
+        debugPrint('Push Notifications: FCM Token ERROR: Received null');
       }
       return token;
     } catch (e) {
-      log('Push Notifications: FATAL ERROR during token retrieval: $e');
+      debugPrint('Push Notifications: FATAL ERROR during token retrieval: $e');
       return null;
     }
   }
@@ -347,7 +346,7 @@ class PushNotificationService {
   }
 
   void _handleNotificationPayload(Map<String, dynamic> data) {
-    log('Handling notification payload: $data');
+    debugPrint('Handling notification payload: $data');
     
     final status = data['status']?.toString();
     final callIdStr = data['call_id']?.toString();
@@ -381,7 +380,7 @@ class PushNotificationService {
     // This is important for app launches from terminated state
     int attempts = 0;
     while (rootNavigatorKey.currentContext == null && attempts < 20) {
-      log('Waiting for rootNavigatorKey.currentContext... attempt ${attempts + 1}');
+      debugPrint('Waiting for rootNavigatorKey.currentContext... attempt ${attempts + 1}');
       await Future.delayed(const Duration(milliseconds: 500));
       attempts++;
     }
@@ -392,7 +391,7 @@ class PushNotificationService {
       if (data.containsKey('call_id')) {
         final type = data['type']?.toString();
         if (type == 'call_offer' || type == 'new_emergency_broadcast') {
-          log('Navigating to /home (Call offer/broadcast notification)');
+          debugPrint('Navigating to /home (Call offer/broadcast notification)');
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (context.mounted) {
               GoRouter.of(context).go('/home');
@@ -403,14 +402,14 @@ class PushNotificationService {
 
         final callIdStr = data['call_id'].toString();
         final callId = int.tryParse(callIdStr) ?? 0;
-        log('Navigating to /active-call with callId: $callId');
+        debugPrint('Navigating to /active-call with callId: $callId');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (context.mounted) {
             GoRouter.of(context).push('/active-call', extra: callId);
           }
         });
       } else {
-        log('Navigating to /home');
+        debugPrint('Navigating to /home');
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (context.mounted) {
             GoRouter.of(context).go('/home');
@@ -418,7 +417,7 @@ class PushNotificationService {
         });
       }
     } else {
-      log('ERROR: Could not get context for navigation after waiting.');
+      debugPrint('ERROR: Could not get context for navigation after waiting.');
     }
   }
 }

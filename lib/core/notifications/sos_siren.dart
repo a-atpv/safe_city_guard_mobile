@@ -1,7 +1,10 @@
-import 'dart:developer';
 import 'dart:io';
-import 'dart:typed_data';
 
+// Диагностика здесь пишется через debugPrint, а не dart:developer log():
+// log() уходит только в VM service, adb logcat его не видит ни в release, ни
+// даже в debug-сборке. Ночь 2026-08-12 показала, чем это кончается: сирена
+// молча не показывалась, и по логам путь пуша обрывался «в никуда».
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:vibration/vibration.dart';
@@ -172,7 +175,7 @@ class SosSiren {
         payload: payload,
       );
     } catch (e) {
-      log('SosSiren: failed to show siren notification: $e');
+      debugPrint('SosSiren: failed to show siren notification: $e');
     }
   }
 
@@ -188,7 +191,7 @@ class SosSiren {
         Vibration.vibrate(pattern: <int>[0, 700, 400, 700, 400, 700], repeat: 0);
       }
     } catch (e) {
-      log('SosSiren: vibration failed: $e');
+      debugPrint('SosSiren: vibration failed: $e');
     }
 
     try {
@@ -211,16 +214,16 @@ class SosSiren {
       );
       return;
     } catch (e) {
-      log('SosSiren: bundled siren playback failed: $e');
+      debugPrint('SosSiren: bundled siren playback failed: $e');
     }
 
     // Последнее средство — штатный будильник телефона. Звучит не как сирена, и
     // это осознанный компромисс: тревога не тем тоном лучше, чем тишина.
     try {
       await FlutterRingtonePlayer().playAlarm(volume: 1.0, looping: true);
-      log('SosSiren: сирена не проигралась, звучит системный будильник');
+      debugPrint('SosSiren: сирена не проигралась, звучит системный будильник');
     } catch (e) {
-      log('SosSiren: system alarm playback failed: $e');
+      debugPrint('SosSiren: system alarm playback failed: $e');
     }
   }
 
@@ -230,12 +233,12 @@ class SosSiren {
     try {
       await FlutterRingtonePlayer().stop();
     } catch (e) {
-      log('SosSiren: stop playback failed: $e');
+      debugPrint('SosSiren: stop playback failed: $e');
     }
     try {
       Vibration.cancel();
     } catch (e) {
-      log('SosSiren: cancel vibration failed: $e');
+      debugPrint('SosSiren: cancel vibration failed: $e');
     }
     await cancelNotification();
   }
@@ -249,7 +252,7 @@ class SosSiren {
       }
       await _plugin.cancel(notificationId);
     } catch (e) {
-      log('SosSiren: cancel notification failed: $e');
+      debugPrint('SosSiren: cancel notification failed: $e');
     }
   }
 

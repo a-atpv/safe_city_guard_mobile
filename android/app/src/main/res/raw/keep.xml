@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gradle-плагин Flutter включает в release не только R8, но и shrinkResources.
+     На res/raw/sos_siren ссылается только Dart-строка ('sos_siren' в
+     sos_siren.dart) — для шринкера это «неиспользуемый» ресурс, и без keep он
+     вырезает его из APK: сирена SOS падает с PlatformException(invalid_sound)
+     в каждой release-сборке (найдено 2026-08-13). -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/sos_siren" />
