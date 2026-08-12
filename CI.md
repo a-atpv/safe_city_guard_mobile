@@ -31,7 +31,6 @@ git tag v1.0.2 && git push --tags
 | `ANDROID_KEYSTORE_BASE64` | `base64 -i upload-keystore.jks \| pbcopy` | сборка уходит с debug-подписью: Play её не примет и поверх установленного приложения она не встанет |
 | `ANDROID_STORE_PASSWORD` | из `key.properties` | то же |
 | `ANDROID_KEY_PASSWORD` | из `key.properties` | то же |
-| `ANDROID_KEY_ALIAS` | из `key.properties` | то же |
 | `PLAY_SERVICE_ACCOUNT_JSON` | Play Console → Setup → API access → сервисный аккаунт с правом Release to testing tracks, скачать JSON целиком | AAB остаётся артефактом прогона, в Play не уезжает |
 | `APP_STORE_CONNECT_KEY_ID` | App Store Connect → Users and Access → Integrations → App Store Connect API | iOS соберётся без подписи — только проверка, что проект компилируется |
 | `APP_STORE_CONNECT_ISSUER_ID` | там же, над таблицей ключей | то же |
@@ -39,9 +38,13 @@ git tag v1.0.2 && git push --tags
 
 Кроме `SAFECITY_DGIS_TILES_KEY`, недостающие секреты пайплайн не ломают: шаг проверяет, что задано, пишет warning в лог и пропускает то, что без ключа сделать нельзя. Можно включать по частям.
 
-### Переменная, а не секрет
+### Переменные, а не секреты
 
-`SAFECITY_API_HOST` (**Settings → Secrets and variables → Actions → Variables**) переключает сборку на другой бэкенд. Не задана — берётся прод (`DEFAULT_API_HOST` в `release.yml`). Задайте её тестовым хостом, если нужна сборка под `safe-city-back-test`.
+Задаются там же, вкладка **Variables**:
+
+- `SAFECITY_API_HOST` — переключает сборку на другой бэкенд. Не задана — берётся прод (`DEFAULT_API_HOST` в `release.yml`). Задайте тестовым хостом, если нужна сборка под `safe-city-back-test`.
+- `ANDROID_KEY_ALIAS` — алиас ключа в keystore, по умолчанию `upload`. Именно переменная, а не секрет: алиас — это имя, а не тайна, зато секретом GitHub маскирует его по всему логу. Алиас `upload` в своё время превращал строку `actions/upload-artifact` в `actions/***-artifact`.
+- `ANDROID_CERT_SHA256` — отпечаток сертификата, которым релиз обязан быть подписан. После сборки CI спрашивает у APK, чем он подписан, и падает при расхождении. Смысл в том, что debug-подписанный релиз внешне неотличим от нормального — узнаёшь об этом уже от Play. Текущее значение: `70543a16582e420c95696b2820cfa550716e3c66ac60eca4ad1f935a6eced891` (`CN=Safe City Guard`). Не задана — CI просто печатает отпечаток и предупреждает.
 
 ## Что нужно получить у владельца Apple-аккаунта
 
