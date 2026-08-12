@@ -12,18 +12,15 @@
          vibration pattern. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Required so background tracking auto-resumes after a device reboot (startOnBoot). -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <!-- flutter_background_geolocation's native layer (tslocationmanager) pulls in
-         ACTIVITY_RECOGNITION for motion-based tracking toggling, which makes Google Play
-         classify the app as a "health app" and demand a health-features declaration.
-         Safe City has no health features, so strip the permission at manifest-merge time.
-         Freshness is preserved by the 60 s heartbeat in LocationService (getCurrentPosition
-         fires regardless of motion state); the on-duty nav/live map run off geolocator's
-         foreground stream. This only drops background motion auto-detection — no impact on
-         fix accuracy, navigation, or the backend's 180 s freshness gate.
-         Paired with `disableMotionActivityUpdates: true` in LocationService.ready(). -->
+    <!-- ACTIVITY_RECOGNITION makes Google Play classify the app as a "health app" and
+         demand a health-features declaration, which Safe City has none of. No dependency
+         asks for it today (it came in with flutter_background_geolocation's native layer,
+         now removed), so this is a standing guard: any library that re-introduces the
+         permission gets it stripped at manifest-merge time instead of surprising us at
+         review. Tracking never depended on it — position comes from geolocator's stream
+         plus the 60 s heartbeat in GeolocatorLocationService, both indifferent to motion
+         state. -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" tools:node="remove" />
 
     <application
@@ -73,13 +70,6 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="emergency_channel" />
-        <!-- flutter_background_geolocation license key.
-             DEBUG builds run without it; RELEASE (Play Store) builds REQUIRE a
-             valid key from https://www.transistorsoft.com/shop/products/flutter-background-geolocation
-             Paste the purchased key below before shipping a release build. -->
-        <meta-data
-            android:name="com.transistorsoft.locationmanager.license"
-            android:value="YOUR_BACKGROUND_GEOLOCATION_LICENSE_KEY" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -3,12 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter_background_geolocation/flutter_background_geolocation.dart'
-    as bg;
 
 import 'core/app_theme.dart';
 import 'core/app_colors.dart';
-import 'core/location/location_service.dart';
 import 'core/map_config.dart';
 import 'core/notifications/push_notification_service.dart';
 import 'core/router/app_router.dart';
@@ -17,11 +14,6 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 0. Register the background-geolocation headless task so the heartbeat keeps
-  // reporting a stationary guard's position even after the app is killed. Must
-  // run before runApp and reference a top-level, vm:entry-point function.
-  bg.BackgroundGeolocation.registerHeadlessTask(backgroundGeolocationHeadlessTask);
 
   // 1. Initialize Firebase with timeout and options
   try {

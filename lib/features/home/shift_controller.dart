@@ -3,19 +3,9 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/location/guard_location_tracker.dart';
 import '../../core/location/geolocator_location_service.dart';
-import '../../core/location/location_service.dart';
 import '../../core/websocket/websocket_service.dart';
 import '../calls/call_controller.dart';
 import 'shift_repository.dart';
-
-/// Which background-location backend the guard app uses on shift.
-///
-/// `true`  → free `GeolocatorLocationService` (foreground service; backgrounded-only) —
-///           on trial for the dedicated Samsung A70 fleet.
-/// `false` → paid `LocationService` (Transistorsoft; survives app-kill/reboot).
-///
-/// Flip this one line to fall back if the A70 field test doesn't hold up.
-const bool kUseFreeLocationStack = true;
 
 class ShiftState {
   final bool isOnline;
@@ -158,8 +148,7 @@ class ShiftController extends Notifier<ShiftState> with WidgetsBindingObserver {
   }
 
   Future<bool> _startLocationTracking() async {
-    _locationService ??=
-        kUseFreeLocationStack ? GeolocatorLocationService() : LocationService();
+    _locationService ??= GeolocatorLocationService();
     // Раньше — fire-and-forget с проглоченной ошибкой: провал запуска
     // трекинга был неотличим от успеха. Теперь ждём и сообщаем результат.
     try {

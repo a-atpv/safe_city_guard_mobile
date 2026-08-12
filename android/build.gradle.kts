@@ -2,9 +2,6 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        // flutter_background_geolocation: native AAR + Huawei HMS location fallback.
-        maven { url = uri("${project(":flutter_background_geolocation").projectDir}/libs") }
-        maven { url = uri("https://developer.huawei.com/repo/") }
     }
 }
 

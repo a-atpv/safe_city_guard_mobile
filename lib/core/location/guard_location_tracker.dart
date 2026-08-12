@@ -1,11 +1,17 @@
-/// Common surface for the guard's background-location backends, so the shift
-/// controller can switch between them in a single line.
+/// Common surface for the guard's background-location backend, so the shift
+/// controller talks to one seam regardless of what is behind it.
 ///
-/// Implementations:
-///  - `LocationService`           — Transistorsoft flutter_background_geolocation
-///    (paid Android license; survives full app-kill).
-///  - `GeolocatorLocationService` — free `geolocator` + Android foreground service
-///    (backgrounded-only; on trial for the dedicated Samsung A70 fleet).
+/// Single implementation: `GeolocatorLocationService` — free `geolocator` +
+/// Android foreground service. Covers backgrounded, **not** force-killed or
+/// rebooted; on the dedicated A70 fleet (one managed model, battery
+/// optimisation disabled at provisioning) that is the whole requirement.
+///
+/// The paid Transistorsoft backend (the only one that survives app-kill) was
+/// removed along with `flutter_background_geolocation`: its v5 licence is
+/// required on BOTH platforms, was never purchased, and the unlicensed SDK put
+/// a "LICENSE VALIDATION FAILURE" banner in front of every release build while
+/// contributing nothing — the free stack had already taken over tracking.
+/// Restoring it means buying the licence, not just re-adding the dependency.
 abstract interface class GuardLocationTracker {
   /// Start (or resume) background tracking for an on-duty guard.
   ///
