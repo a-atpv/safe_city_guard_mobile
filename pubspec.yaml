@@ -15,7 +15,12 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # Read more about iOS versioning at
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 
-version: 1.0.1+2
+# 1.0.2 — первая сборка, которая умеет показать SOS-пуш. Бэкенд шлёт его
+# data-only (сирену рисует само приложение), и на 1.0.1 вызов не даёт ни звука,
+# ни строки в шторке. Поэтому версию пришлось развести: до 1.0.2 «свежая» и
+# «глухая» сборки назывались одинаково, и баннер «вышло обновление»
+# (APP_GUARD_LATEST_VERSION) не мог сработать. Не откатывать.
+version: 1.0.2+2
 
 environment:
   sdk: ^3.8.1

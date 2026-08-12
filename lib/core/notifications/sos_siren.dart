@@ -21,6 +21,13 @@ const Set<String> kTerminalCallStatuses = {
 
 /// The looping emergency siren.
 ///
+/// The sound itself is a two-tone police "pin-pon": 1160/870 Hz alternating
+/// every 0.6 s, four cycles to a 4.8 s seamless loop. It is synthesised, not
+/// recorded — `scripts/make_sos_siren.py` regenerates all three copies
+/// (`res/raw`, `assets/sounds`, `ios/Runner`) and explains the frequencies.
+/// Swapping the file contents needs no channel bump: the channel stores the
+/// sound by name, `android.resource://<pkg>/raw/sos_siren`.
+///
 /// Two delivery paths, because the app has to scream in states where a Dart
 /// isolate cannot be trusted to stay alive:
 ///

@@ -28,8 +28,8 @@ env:
 
   # Номер сборки = отступ + номер прогона воркфлоу. Стору важно ровно одно:
   # каждый следующий билд строго больше предыдущего. Отступ 100 взят с запасом
-  # над тем, что заливалось руками (на 2026-08 в pubspec было 1.0.1+2).
-  # Версия (1.0.1) по-прежнему берётся из pubspec.yaml — CI её не трогает.
+  # над однозначными номерами, которые заливались руками. Если что-то уедет в
+  # стор в обход CI — поднять отступ, чтобы нумерация не столкнулась.
   BUILD_NUMBER_OFFSET: 100
 
   PACKAGE_NAME: com.safeCityGuard.appname
@@ -110,14 +110,27 @@ jobs:
           keyAlias=$KEY_ALIAS
           EOF
 
-      - name: Номер сборки
+      - name: Версия и номер сборки
         id: build
-        run: echo "number=$(( BUILD_NUMBER_OFFSET + GITHUB_RUN_NUMBER ))" >> "$GITHUB_OUTPUT"
+        run: |
+          NUMBER=$(( BUILD_NUMBER_OFFSET + GITHUB_RUN_NUMBER ))
+          # Версию задаёт тег: v1.0.2 → 1.0.2. То есть поднять версию — это назвать
+          # тег, а не править pubspec; автоматически инкрементировать её нельзя,
+          # потому что машина не знает, патч это или минор. Ручной запуск без тега
+          # берёт версию из pubspec.yaml.
+          NAME="${GITHUB_REF#refs/tags/v}"
+          if [ "$NAME" = "$GITHUB_REF" ]; then
+            NAME=$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)
+          fi
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "→ версия $NAME, номер сборки $NUMBER"
 
       - name: Собрать AAB и APK
         run: |
-          ./scripts/build_release.sh appbundle --build-number=${{ steps.build.outputs.number }}
-          ./scripts/build_release.sh apk --build-number=${{ steps.build.outputs.number }}
+          ARGS="--build-name=${{ steps.build.outputs.name }} --build-number=${{ steps.build.outputs.number }}"
+          ./scripts/build_release.sh appbundle $ARGS
+          ./scripts/build_release.sh apk $ARGS
 
       # Debug-подписанный релиз внешне неотличим от нормального — ровно до
       # момента, когда Play отвергнет загрузку. Поэтому спрашиваем APK, чем он
@@ -150,14 +163,19 @@ jobs:
 
       # Первую сборку в трек всё равно придётся залить руками: Play API умеет
       # обновлять уже существующее приложение, но не создавать его.
-      - name: Залить в Google Play (internal)
+      #
+      # alpha — это и есть «Закрытое тестирование» в консоли. Названия треков в
+      # API и в интерфейсе не совпадают: internal = Внутреннее, alpha = Закрытое,
+      # beta = Открытое. Если заведён именованный закрытый трек, его идентификатор
+      # задаётся переменной PLAY_TRACK.
+      - name: Залить в Google Play
         if: steps.gate.outputs.play == 'true' && steps.gate.outputs.signing == 'true' && (github.event_name == 'push' || inputs.publish)
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: ${{ env.PACKAGE_NAME }}
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
-          track: internal
+          track: ${{ vars.PLAY_TRACK || 'alpha' }}
           status: completed
 
   ios:
@@ -202,13 +220,21 @@ jobs:
             echo "::warning::Ключа App Store Connect нет — соберём только неподписанный билд как проверку компиляции. В TestFlight уходить нечему."
           fi
 
-      - name: Номер сборки
+      - name: Версия и номер сборки
         id: build
-        run: echo "number=$(( BUILD_NUMBER_OFFSET + GITHUB_RUN_NUMBER ))" >> "$GITHUB_OUTPUT"
+        run: |
+          NUMBER=$(( BUILD_NUMBER_OFFSET + GITHUB_RUN_NUMBER ))
+          NAME="${GITHUB_REF#refs/tags/v}"
+          if [ "$NAME" = "$GITHUB_REF" ]; then
+            NAME=$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)
+          fi
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "→ версия $NAME, номер сборки $NUMBER"
 
       - name: Проверочная сборка без подписи
         if: steps.gate.outputs.signing == 'false'
-        run: ./scripts/build_release.sh ios --no-codesign --build-number=${{ steps.build.outputs.number }}
+        run: ./scripts/build_release.sh ios --no-codesign --build-name=${{ steps.build.outputs.name }} --build-number=${{ steps.build.outputs.number }}
 
       - name: Положить ключ App Store Connect
         if: steps.gate.outputs.signing == 'true'
@@ -232,7 +258,7 @@ jobs:
           # по которому Xcode выпустит сертификат и профиль на чистом раннере.
           # Этот же вызов кладёт ключи 2ГИС в ios/Flutter/Generated.xcconfig,
           # откуда их читает архив.
-          ./scripts/build_release.sh ios --no-codesign --build-number=${{ steps.build.outputs.number }}
+          ./scripts/build_release.sh ios --no-codesign --build-name=${{ steps.build.outputs.name }} --build-number=${{ steps.build.outputs.number }}
 
           xcodebuild -workspace ios/Runner.xcworkspace \
             -scheme Runner \

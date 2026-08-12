@@ -76,8 +76,15 @@ class PushNotificationService {
     );
 
     if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      log('Push Notifications: Permission DENIED');
-      return;
+      // Раньше здесь стоял `return`, и это стоило охраннику всех вызовов сразу:
+      // отказ от показа уведомлений (Android 13+) обрывал инициализацию до
+      // регистрации фонового обработчика FCM и до получения токена. А доставка
+      // data-сообщений от разрешения POST_NOTIFICATIONS не зависит — запрещён
+      // только показ. Продолжаем: токен уедет на бэкенд, SOS-пуш дойдёт, и,
+      // пока приложение открыто, сирена всё равно прозвучит.
+      log('Push Notifications: Permission DENIED — уведомления показывать '
+          'нельзя, сирена в фоне не прозвучит. Инициализацию продолжаем: '
+          'доставка data-сообщений от этого разрешения не зависит.');
     } else if (settings.authorizationStatus == AuthorizationStatus.provisional) {
       log('Push Notifications: Permission PROVISIONAL (quiet)');
     } else {
