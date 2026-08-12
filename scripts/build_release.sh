@@ -14,11 +14,23 @@
 #   ./scripts/build_release.sh config   # только записать ключи в Generated.xcconfig,
 #                                       # если архив делается из Xcode
 #
+# Всё, что идёт после цели, уезжает в flutter build как есть:
+#
+#   ./scripts/build_release.sh appbundle --build-number=123
+#   ./scripts/build_release.sh ios --no-codesign --build-number=123
+#
+# Этим пользуется CI (.github/workflows/release.yml) — чтобы релизная сборка
+# и на раннере шла через ту же проверку ключей, а не в обход неё.
+#
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 TARGET="${1:-ipa}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+EXTRA="$*"
 DEFINES_FILE="dart_defines.json"
 
 if [[ ! -f "$DEFINES_FILE" ]]; then
@@ -33,17 +45,17 @@ if ! grep -q '"SAFECITY_DGIS_TILES_KEY"[[:space:]]*:[[:space:]]*"[^"]\+"' "$DEFI
   exit 1
 fi
 
-echo "→ flutter build $TARGET --release --dart-define-from-file=$DEFINES_FILE"
+echo "→ flutter build $TARGET --release --dart-define-from-file=$DEFINES_FILE $EXTRA"
 
 case "$TARGET" in
   config)
     # Xcode-архив читает ключи из ios/Flutter/Generated.xcconfig, который
     # пишет вот этот вызов. Запускать перед каждым Product → Archive.
-    flutter build ios --config-only --release --dart-define-from-file="$DEFINES_FILE"
+    flutter build ios --config-only --release --dart-define-from-file="$DEFINES_FILE" $EXTRA
     echo "✓ Ключи записаны в ios/Flutter/Generated.xcconfig — можно архивировать из Xcode."
     ;;
   ipa | apk | appbundle | ios)
-    flutter build "$TARGET" --release --dart-define-from-file="$DEFINES_FILE"
+    flutter build "$TARGET" --release --dart-define-from-file="$DEFINES_FILE" $EXTRA
     ;;
   *)
     echo "✗ Неизвестная цель: $TARGET (ipa | apk | appbundle | ios | config)" >&2

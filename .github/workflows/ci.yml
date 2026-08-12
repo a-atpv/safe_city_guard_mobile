@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Одна точка правки версии SDK на весь репозиторий. Локальная разработка идёт
+  # на master-канале, CI держим на stable. Если stable окажется старше того, что
+  # нужно коду, сюда пишется конкретная версия — например 3.35.4.
+  FLUTTER_CHANNEL: stable
+
+jobs:
+  check:
+    name: Анализ и тесты
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - run: flutter pub get
+
+      # --no-fatal-infos: без него сборка краснеет на подсказках вроде
+      # «withOpacity is deprecated». Ошибки и предупреждения остаются
+      # блокирующими, а подсказки — это не повод останавливать релиз.
+      - name: flutter analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: flutter test
+        run: flutter test

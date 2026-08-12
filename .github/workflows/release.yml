@@ -1,0 +1,251 @@
+name: Release
+
+# Релиз приложения охранника. Запускается тегом (git tag v1.0.2 && git push --tags)
+# или руками через вкладку Actions.
+#
+# Сборка идёт только через scripts/build_release.sh — тот же скрипт, что и локально.
+# Он падает, если не задан ключ подложки 2ГИС, и это намеренно: сборка без ключа
+# внешне неотличима от нормальной ровно до дня, когда карта у охранника станет
+# серым прямоугольником. Один раз такое уже уехало в TestFlight.
+#
+# Список секретов — в CI.md.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Заливать в сторы (иначе только собрать артефакты)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_CHANNEL: stable
+
+  # Номер сборки = отступ + номер прогона воркфлоу. Стору важно ровно одно:
+  # каждый следующий билд строго больше предыдущего. Отступ 100 взят с запасом
+  # над тем, что заливалось руками (на 2026-08 в pubspec было 1.0.1+2).
+  # Версия (1.0.1) по-прежнему берётся из pubspec.yaml — CI её не трогает.
+  BUILD_NUMBER_OFFSET: 100
+
+  PACKAGE_NAME: com.safeCityGuard.appname
+
+  # Прод-бэкенд. Чтобы собрать на тестовый, задайте переменную репозитория
+  # SAFECITY_API_HOST (Settings → Secrets and variables → Actions → Variables).
+  DEFAULT_API_HOST: safe-city-back-7c8ed50edd7d.herokuapp.com
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17' # AGP 8.9.1 требует 17+
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Собрать dart_defines.json из секретов
+        env:
+          DGIS_TILES_KEY: ${{ secrets.SAFECITY_DGIS_TILES_KEY }}
+          API_HOST: ${{ vars.SAFECITY_API_HOST || env.DEFAULT_API_HOST }}
+        run: |
+          if [ -z "$DGIS_TILES_KEY" ]; then
+            echo "✗ Секрет SAFECITY_DGIS_TILES_KEY не задан. Без него подложка не покрыта подпиской 2ГИС." >&2
+            exit 1
+          fi
+          jq -n --arg key "$DGIS_TILES_KEY" --arg host "$API_HOST" \
+            '{SAFECITY_DGIS_TILES_KEY: $key, SAFECITY_API_HOST: $host}' > dart_defines.json
+          echo "→ бэкенд: $API_HOST"
+
+      - name: Проверить, какие секреты заданы
+        id: gate
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PLAY_SA_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "signing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signing=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANDROID_KEYSTORE_BASE64 не задан — сборка уйдёт с debug-подписью. Google Play такую не примет, и поверх установленного приложения она не встанет."
+          fi
+          if [ -n "$PLAY_SA_JSON" ]; then
+            echo "play=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "play=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::PLAY_SERVICE_ACCOUNT_JSON не задан — в Google Play заливать нечем, AAB останется артефактом прогона."
+          fi
+
+      - name: Восстановить keystore
+        if: steps.gate.outputs.signing == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          # storeFile в build.gradle.kts резолвится относительно android/app,
+          # поэтому и файл кладём туда же.
+          printf '%s' "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storeFile=upload-keystore.jks
+          storePassword=$STORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          EOF
+
+      - name: Номер сборки
+        id: build
+        run: echo "number=$(( BUILD_NUMBER_OFFSET + GITHUB_RUN_NUMBER ))" >> "$GITHUB_OUTPUT"
+
+      - name: Собрать AAB и APK
+        run: |
+          ./scripts/build_release.sh appbundle --build-number=${{ steps.build.outputs.number }}
+          ./scripts/build_release.sh apk --build-number=${{ steps.build.outputs.number }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ steps.build.outputs.number }}
+          retention-days: 30
+          path: |
+            build/app/outputs/bundle/release/app-release.aab
+            build/app/outputs/flutter-apk/app-release.apk
+
+      # Первую сборку в трек всё равно придётся залить руками: Play API умеет
+      # обновлять уже существующее приложение, но не создавать его.
+      - name: Залить в Google Play (internal)
+        if: steps.gate.outputs.play == 'true' && steps.gate.outputs.signing == 'true' && (github.event_name == 'push' || inputs.publish)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ env.PACKAGE_NAME }}
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
+
+  ios:
+    name: iOS
+    # macos-latest, а не конкретная версия: устаревшие метки GitHub со временем
+    # выключает, и пайплайн, который трогают раз в месяц, падал бы на ровном месте.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Собрать dart_defines.json из секретов
+        env:
+          DGIS_TILES_KEY: ${{ secrets.SAFECITY_DGIS_TILES_KEY }}
+          API_HOST: ${{ vars.SAFECITY_API_HOST || env.DEFAULT_API_HOST }}
+        run: |
+          if [ -z "$DGIS_TILES_KEY" ]; then
+            echo "✗ Секрет SAFECITY_DGIS_TILES_KEY не задан. Без него подложка не покрыта подпиской 2ГИС." >&2
+            exit 1
+          fi
+          jq -n --arg key "$DGIS_TILES_KEY" --arg host "$API_HOST" \
+            '{SAFECITY_DGIS_TILES_KEY: $key, SAFECITY_API_HOST: $host}' > dart_defines.json
+          echo "→ бэкенд: $API_HOST"
+
+      - name: Проверить, какие секреты заданы
+        id: gate
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          if [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER_ID" ] && [ -n "$ASC_PRIVATE_KEY" ]; then
+            echo "signing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signing=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Ключа App Store Connect нет — соберём только неподписанный билд как проверку компиляции. В TestFlight уходить нечему."
+          fi
+
+      - name: Номер сборки
+        id: build
+        run: echo "number=$(( BUILD_NUMBER_OFFSET + GITHUB_RUN_NUMBER ))" >> "$GITHUB_OUTPUT"
+
+      - name: Проверочная сборка без подписи
+        if: steps.gate.outputs.signing == 'false'
+        run: ./scripts/build_release.sh ios --no-codesign --build-number=${{ steps.build.outputs.number }}
+
+      - name: Положить ключ App Store Connect
+        if: steps.gate.outputs.signing == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          # ~/private_keys — одно из мест, где altool сам ищет ключ по его Key ID.
+          mkdir -p ~/private_keys
+          printf '%s' "$ASC_PRIVATE_KEY" | base64 -D > ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+          chmod 600 ~/private_keys/AuthKey_$ASC_KEY_ID.p8
+
+      - name: Собрать и подписать архив
+        if: steps.gate.outputs.signing == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          # Flutter-часть собирается отдельно, потому что архив делаем сами:
+          # только своим вызовом xcodebuild можно передать -allowProvisioningUpdates,
+          # по которому Xcode выпустит сертификат и профиль на чистом раннере.
+          # Этот же вызов кладёт ключи 2ГИС в ios/Flutter/Generated.xcconfig,
+          # откуда их читает архив.
+          ./scripts/build_release.sh ios --no-codesign --build-number=${{ steps.build.outputs.number }}
+
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath build/Runner.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            archive
+
+          xcodebuild -exportArchive \
+            -archivePath build/Runner.xcarchive \
+            -exportOptionsPlist ios/ExportOptions.plist \
+            -exportPath build/ipa \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_$ASC_KEY_ID.p8 \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.signing == 'true'
+        with:
+          name: ios-${{ steps.build.outputs.number }}
+          retention-days: 30
+          path: build/ipa/*.ipa
+
+      - name: Залить в TestFlight
+        if: steps.gate.outputs.signing == 'true' && (github.event_name == 'push' || inputs.publish)
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          IPA=$(find build/ipa -name '*.ipa' | head -1)
+          if [ -z "$IPA" ]; then
+            echo "✗ .ipa не найден — экспорт архива не отдал файл." >&2
+            exit 1
+          fi
+          xcrun altool --upload-app -f "$IPA" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"

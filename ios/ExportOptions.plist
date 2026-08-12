@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Как экспортировать архив в .ipa для App Store. Читается шагом
+  `xcodebuild -exportArchive` в .github/workflows/release.yml.
+
+  signingStyle = automatic вместе с -allowProvisioningUpdates: сертификат и
+  профиль Xcode выпускает сам по ключу App Store Connect, ничего заранее
+  положенного на раннер не требуется.
+
+  manageAppVersionAndBuildNumber = false — иначе Xcode подставит свой номер
+  сборки вместо посчитанного в CI, и номера перестанут быть предсказуемыми.
+-->
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>teamID</key>
+	<string>3PR335XF64</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>uploadSymbols</key>
+	<true/>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>destination</key>
+	<string>export</string>
+</dict>
+</plist>
