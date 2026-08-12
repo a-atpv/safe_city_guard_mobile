@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/app_colors.dart';
+import '../../core/app_version.dart';
 import '../auth/auth_controller.dart';
 import 'profile_controller.dart';
 
@@ -12,6 +13,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profileState = ref.watch(profileControllerProvider);
     final profile = profileState.profile;
+    final appVersion = ref.watch(appVersionProvider).value;
     
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -138,7 +140,18 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 32),
+
+              const SizedBox(height: 20),
+
+              // App version
+              Text(
+                appVersion == null ? '' : 'Версия $appVersion',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textHint,
+                ),
+              ),
+              const SizedBox(height: 24),
             ],
           ),
         ),
