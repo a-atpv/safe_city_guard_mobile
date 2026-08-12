@@ -2,10 +2,8 @@ import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:vibration/vibration.dart';
 
 /// FCM payload `type` values that mean "an SOS needs a guard right now".
@@ -194,23 +192,33 @@ class SosSiren {
     }
 
     try {
-      final String? fileUri = await _sirenFileUri();
-      if (fileUri != null) {
-        await FlutterRingtonePlayer().play(
-          fromFile: fileUri,
-          looping: true,
-          volume: 1.0,
-          asAlarm: true,
-        );
-        return;
-      }
+      // `fromAsset`, а НЕ `fromFile`. В flutter_ringtone_player 4.0.0+4 первая
+      // же строка play() — `if (fromAsset == null && android == null && ios ==
+      // null) throw "Please specify the sound source."`, и fromFile в этой
+      // проверке не упомянут. Вызов, где задан только fromFile, всегда падает,
+      // не доходя до ветки, которая его обрабатывает; catch ниже глушил это
+      // исключение и уводил на системный будильник — именно его и слышали
+      // вместо сирены. Проверено тестом sos_siren_playback_test.dart.
+      //
+      // Дописать сюда android:/ios: «на всякий случай» нельзя: нативная часть
+      // перезаписывает uri системным звуком, если пришёл аргумент android
+      // ("The androidSound overrides fromAsset if exists").
+      await FlutterRingtonePlayer().play(
+        fromAsset: _sirenAsset,
+        looping: true,
+        volume: 1.0,
+        asAlarm: true,
+      );
+      return;
     } catch (e) {
-      log('SosSiren: bundled siren playback failed, using system alarm: $e');
+      log('SosSiren: bundled siren playback failed: $e');
     }
 
-    // Last resort: the device's own alarm tone. Loud and always available.
+    // Последнее средство — штатный будильник телефона. Звучит не как сирена, и
+    // это осознанный компромисс: тревога не тем тоном лучше, чем тишина.
     try {
       await FlutterRingtonePlayer().playAlarm(volume: 1.0, looping: true);
+      log('SosSiren: сирена не проигралась, звучит системный будильник');
     } catch (e) {
       log('SosSiren: system alarm playback failed: $e');
     }
@@ -245,20 +253,4 @@ class SosSiren {
     }
   }
 
-  /// The ringtone plugin hands the URI straight to `RingtoneManager`, so the
-  /// asset has to exist as a real file with a `file://` scheme.
-  static Future<String?> _sirenFileUri() async {
-    try {
-      final Directory dir = await getTemporaryDirectory();
-      final File file = File('${dir.path}/sos_siren.mp3');
-      if (!await file.exists()) {
-        final ByteData data = await rootBundle.load(_sirenAsset);
-        await file.writeAsBytes(data.buffer.asUint8List(), flush: true);
-      }
-      return file.uri.toString();
-    } catch (e) {
-      log('SosSiren: could not materialise siren asset: $e');
-      return null;
-    }
-  }
 }
