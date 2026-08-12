@@ -67,6 +67,18 @@ class PushNotificationService {
   Future<void> initialize() async {
     if (_isInitialized) return;
 
+    // 0. Фоновый обработчик регистрируется ПЕРВЫМ — до всего, что может ждать
+    // человека. Ниже по коду стоят системный диалог уведомлений и (Android 14+)
+    // запрос full-screen intent, который уводит охранника в отдельный экран
+    // настроек и не возвращается, пока он оттуда не выйдет. А main.dart
+    // оборачивает initialize() в таймаут на 10 секунд. Пока регистрация стояла
+    // после них, свежая установка получала ровно ту картину, с которой сюда и
+    // пришли: data-пуш до телефона доходит, но рисовать сирену в Dart некому,
+    // и в шторке остаётся только аварийный дубль с бэкенда. Чинилось это лишь
+    // перезапуском приложения — handle фонового колбэка сохраняется нативно
+    // только после успешного вызова.
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
     // 1. Request permissions (especially for iOS)
     NotificationSettings settings = await _fcm.requestPermission(
       alert: true,
@@ -137,11 +149,11 @@ class PushNotificationService {
       // Dedicated looping-siren channel for SOS offers.
       await SosSiren.ensureChannel();
 
-      await _requestAndroidAlertPermissions(android);
+      // Без await: запрос full-screen intent открывает системный экран и висит,
+      // пока охранник с него не уйдёт. Ждать его здесь — значит съесть таймаут
+      // initialize() и не дойти до подписок ниже.
+      unawaited(_requestAndroidAlertPermissions(android));
     }
-
-    // 4. Set up Background Messenger
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
     // 5. Handle Foreground Messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
