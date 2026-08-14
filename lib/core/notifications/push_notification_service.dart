@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../firebase_options.dart';
 import '../router/app_router.dart';
+import 'sos_push_gate.dart';
 import 'sos_siren.dart';
 
 /// Top-level function to handle background messages.
@@ -34,6 +35,18 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     if (status != null && kTerminalCallStatuses.contains(status)) {
       await SosSiren.cancelNotification(initializePlugin: true);
     }
+    return;
+  }
+
+  // До каких-либо инициализаций: пуш мог доехать с опозданием (парковка в
+  // LiveData, очередь FCM) или относиться к вызову, который на этом телефоне
+  // уже обработан. Такому — не звучать.
+  final String? veto = await SosPushGate.vetoReason(
+    data: data,
+    sentTime: message.sentTime,
+  );
+  if (veto != null) {
+    debugPrint('Background handler: SOS push suppressed — $veto');
     return;
   }
 
@@ -155,14 +168,29 @@ class PushNotificationService {
     }
 
     // 5. Handle Foreground Messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       debugPrint('Received foreground message: ${message.notification?.title}');
 
       final String? type = message.data['type']?.toString();
       if (kSosPushTypes.contains(type)) {
-        // App is on screen: play the siren in-app instead of stacking a
-        // heads-up notification on top of the incoming-offer sheet.
-        SosSiren.startInApp();
+        // Сюда прилетают и трупы: припаркованный в LiveData пуш доигрывается
+        // при следующем resume — спустя минуты, когда вызов давно принят или
+        // закрыт (2026-08-14: сирена без шторки после завершения). Шторку этот
+        // путь не открывает, так что запущенную здесь сирену было бы некому
+        // погасить — фильтруем до старта.
+        final String? veto = await SosPushGate.vetoReason(
+          data: message.data,
+          sentTime: message.sentTime,
+        );
+        if (veto == null) {
+          // App is on screen: play the siren in-app instead of stacking a
+          // heads-up notification on top of the incoming-offer sheet.
+          SosSiren.startInApp();
+        } else {
+          debugPrint('Push Notifications: SOS push без сирены — $veto');
+        }
+        // Список вызовов освежаем в любом случае: пуш протух, но состояние на
+        // сервере могло и правда измениться.
         _onSosPushCallback?.call(message.data);
         return;
       }

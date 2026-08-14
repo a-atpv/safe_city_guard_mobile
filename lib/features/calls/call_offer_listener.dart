@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/websocket/websocket_service.dart';
 import '../../core/app_colors.dart';
 import '../../core/notifications/push_notification_service.dart';
+import '../../core/notifications/sos_push_gate.dart';
 import '../../core/notifications/sos_siren.dart';
 import '../../core/router/app_router.dart'; // import rootNavigatorKey
 import 'widgets/call_offer_sheet.dart';
@@ -165,9 +166,15 @@ class CallOfferListener {
 
   void handleTerminalStatus(String status, int callId) async {
     debugPrint('CallOfferListener: Handling terminal status $status for call $callId');
-    
+
     // 1. Stop alert/siren sounds and vibration
     SosSiren.stop();
+
+    // Закрытый вызов запоминаем: его запоздавшие SOS-пуши (парковка в
+    // LiveData, резенд) больше не имеют права поднимать сирену.
+    if (callId != 0) {
+      await SosPushGate.markHandled(callId.toString());
+    }
     
     // 2. Clear active call state locally
     _ref.read(callControllerProvider.notifier).clearActiveCall();

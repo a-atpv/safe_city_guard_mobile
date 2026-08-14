@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'dart:ui';
 import '../call_repository.dart';
 import '../call_controller.dart';
+import '../../../core/notifications/sos_push_gate.dart';
 import '../../../core/router/app_router.dart';
 
 class CallOfferSheet extends ConsumerStatefulWidget {
@@ -295,6 +296,10 @@ class _CallOfferSheetState extends ConsumerState<CallOfferSheet> {
     try {
       final repo = CallRepository();
       await repo.acceptCall(callId.toString());
+
+      // Принятый вызов больше не должен звучать: запоздавшая копия его же
+      // SOS-пуша иначе перезапустит сирену уже без шторки (см. SosPushGate).
+      await SosPushGate.markHandled(callId.toString());
 
       // Refresh the call controller state so that the active call is updated locally
       await ref.read(callControllerProvider.notifier).refresh();

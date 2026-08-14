@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/notifications/sos_push_gate.dart';
 import 'call_repository.dart';
 
 class CallState {
@@ -100,6 +101,10 @@ class CallController extends Notifier<CallState> {
   Future<void> acceptCall(String callId) async {
     try {
       await _repository.acceptCall(callId);
+      // Принятый вызов больше не должен звучать: запоздавшая копия его же
+      // SOS-пуша (резенд, парковка в LiveData) иначе заведёт сирену, которую
+      // на экране активного вызова некому выключить.
+      await SosPushGate.markHandled(callId);
       await _fetchActiveCall();
     } catch (e) {
       state = state.copyWith(error: e.toString().replaceFirst('Exception: ', ''));
@@ -110,6 +115,8 @@ class CallController extends Notifier<CallState> {
   Future<void> declineCall(String callId) async {
     try {
       await _repository.declineCall(callId);
+      // Отклонённый вызов уходит другим — его пуши на этом телефоне глушим.
+      await SosPushGate.markHandled(callId);
       // Wait for it to clear from active calls
       await _fetchActiveCall();
     } catch (e) {
