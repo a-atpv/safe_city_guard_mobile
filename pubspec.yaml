@@ -26,7 +26,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # красоты: баннер «вышло обновление» сравнивает именно имя
 # (APP_GUARD_LATEST_VERSION на бэкенде), и пока «свежая» и «глухая» сборки
 # назывались одинаково, он не мог сработать. Не откатывать.
-version: 1.0.10+120
+version: 1.0.11+15
 
 environment:
   sdk: ^3.8.1
